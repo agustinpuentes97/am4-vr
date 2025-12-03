@@ -3,28 +3,155 @@
 
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>AR Video Marker</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/aframe/build/aframe-ar.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+            text-align: center;
+        }
+        #error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background: rgba(255, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+            text-align: center;
+            display: none;
+        }
+    </style>
 </head>
 
-<body style="margin: 0; overflow: hidden;">
-    <a-scene embedded vr-mode-ui="enabled: false" xr-mode-ui="enabled: false"
-        webxr="optionalFeatures: []; requiredFeatures: [];"
-        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;">
+<body>
+    <div id="loading">Cargando cámara...</div>
+    <div id="error"></div>
+    
+    <a-scene 
+        embedded 
+        vr-mode-ui="enabled: false" 
+        xr-mode-ui="enabled: false"
+        arjs="
+            trackingMethod: best; 
+            sourceType: webcam; 
+            sourceWidth: 1280; 
+            sourceHeight: 720; 
+            displayWidth: 1280; 
+            displayHeight: 720; 
+            debugUIEnabled: false;
+            detectionMode: mono_and_matrix;
+            matrixCodeType: 3x3;
+            cameraParametersUrl: https://cdn.jsdelivr.net/npm/ar.js@3.3.2/data/data/camera_para.dat;
+            maxDetectionRate: 60;
+            canvasWidth: 1280;
+            canvasHeight: 720;
+        "
+        renderer="logarithmicDepthBuffer: true; colorManagement: true; sortObjects: true;"
+        stats="false">
 
-        <!-- Marcador basado en imagen -->
-        <a-marker type="pattern" url="assets/marker1.patt">
-            <a-video src="#video" width="1" height="0.6" position="0 0 0" rotation="-90 0 0"></a-video>
+        <!-- Marcador basado en patrón -->
+        <a-marker 
+            type="pattern" 
+            url="assets/marker1.patt"
+            emitevents="true"
+            size="1"
+            raycaster="objects: .clickable">
+            <a-video 
+                src="#video" 
+                width="1" 
+                height="0.6" 
+                position="0 0.3 0" 
+                rotation="-90 0 0"
+                class="clickable">
+            </a-video>
         </a-marker>
 
-        <a-entity camera></a-entity>
+        <a-entity camera look-controls="enabled: false"></a-entity>
 
         <!-- Video oculto (se reproduce sobre el marcador) -->
-        <video id="video" src="assets/video1.mp4" autoplay loop playsinline crossorigin="anonymous"
-            style="display:none"></video>
+        <video 
+            id="video" 
+            src="assets/video1.mp4" 
+            autoplay 
+            loop 
+            playsinline 
+            webkit-playsinline
+            muted
+            crossorigin="anonymous"
+            style="display:none">
+        </video>
 
     </a-scene>
+
+    <script>
+        // Ocultar loading cuando la escena esté lista
+        const scene = document.querySelector('a-scene');
+        const loading = document.getElementById('loading');
+        const errorDiv = document.getElementById('error');
+        
+        scene.addEventListener('loaded', function() {
+            setTimeout(() => {
+                loading.style.display = 'none';
+            }, 1000);
+        });
+
+        // Manejo de errores de video
+        const video = document.getElementById('video');
+        
+        video.addEventListener('loadeddata', function() {
+            console.log('Video cargado correctamente');
+            video.play().catch(err => {
+                console.error('Error al reproducir video:', err);
+                showError('Error al reproducir el video. Asegúrate de que el archivo existe.');
+            });
+        });
+
+        video.addEventListener('error', function(e) {
+            console.error('Error en el video:', e);
+            showError('Error al cargar el video. Verifica que el archivo video1.mp4 existe en la carpeta assets.');
+        });
+
+        // Manejo de errores de cámara
+        scene.addEventListener('arjs-video-loaded', function() {
+            console.log('Cámara cargada correctamente');
+        });
+
+        // Verificar si estamos en HTTPS o localhost
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+            showError('Esta aplicación requiere HTTPS para acceder a la cámara. GitHub Pages debería proporcionarlo automáticamente.');
+        }
+
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            loading.style.display = 'none';
+        }
+
+        // Forzar reproducción del video cuando se detecte el marcador
+        const marker = document.querySelector('a-marker');
+        marker.addEventListener('markerFound', function() {
+            video.play().catch(err => console.error('Error al reproducir:', err));
+        });
+    </script>
 </body>
 
 </html>
