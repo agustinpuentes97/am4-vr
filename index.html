@@ -74,8 +74,8 @@
     <canvas id="canvas"></canvas>
 
     <script src="https://cdn.jsdelivr.net/npm/three@0.138.3/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jsartoolkit5@0.0.9/jsartoolkit/artoolkit.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jsartoolkit5@0.0.9/jsartoolkit/artoolkit.three.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.2/js/artoolkit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.2/js/artoolkit.three.js"></script>
 
     <script>
         const statusEl = document.getElementById('status');
@@ -136,6 +136,22 @@
         // Paso 2: Inicializar AR
         function initAR() {
             console.log('Inicializando AR...');
+            
+            // Verificar que THREEx esté disponible
+            if (typeof THREEx === 'undefined') {
+                console.error('THREEx no está disponible. Esperando...');
+                statusEl.textContent = 'Error: Librerías AR no cargadas';
+                setTimeout(() => {
+                    if (typeof THREEx !== 'undefined') {
+                        initAR();
+                    } else {
+                        statusEl.textContent = 'Error: No se pueden cargar las librerías AR';
+                    }
+                }, 1000);
+                return;
+            }
+            
+            console.log('THREEx disponible:', typeof THREEx !== 'undefined');
             
             // Configurar Three.js
             scene = new THREE.Scene();
