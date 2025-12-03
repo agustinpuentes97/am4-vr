@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>AR Video Marker</title>
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/aframe/build/aframe-ar.js"></script>
+</head>
+
+<body style="margin: 0; overflow: hidden;">
+    <a-scene embedded vr-mode-ui="enabled: false" xr-mode-ui="enabled: false"
+        webxr="optionalFeatures: []; requiredFeatures: [];"
+        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;">
+
+        <!-- Marcador basado en imagen -->
+        <a-marker type="pattern" url="assets/marker1.patt">
+            <a-video src="#video" width="1" height="0.6" position="0 0 0" rotation="-90 0 0"></a-video>
+        </a-marker>
+
+        <a-entity camera></a-entity>
+
+        <!-- Video oculto (se reproduce sobre el marcador) -->
+        <video id="video" src="assets/video1.mp4" autoplay loop playsinline crossorigin="anonymous"
+            style="display:none"></video>
+
+    </a-scene>
+</body>
+
+</html>
