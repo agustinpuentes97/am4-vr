@@ -50,6 +50,10 @@
             left: 0;
             width: 100%;
             height: 100%;
+            z-index: 1;
+        }
+        #arVideo {
+            z-index: 0;
         }
     </style>
 </head>
@@ -112,6 +116,11 @@
         function setupAR() {
             const statusEl = document.getElementById('status');
             
+            console.log('Configurando AR...', {
+                videoWidth: video.videoWidth,
+                videoHeight: video.videoHeight
+            });
+            
             // Configurar Three.js
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -124,6 +133,21 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setClearColor(0x000000, 0);
 
+            // Crear textura del video de la cámara para el fondo
+            const videoTexture = new THREE.VideoTexture(video);
+            videoTexture.minFilter = THREE.LinearFilter;
+            videoTexture.magFilter = THREE.LinearFilter;
+            
+            // Crear plano de fondo con el video
+            const backgroundGeometry = new THREE.PlaneGeometry(2, 2);
+            const backgroundMaterial = new THREE.MeshBasicMaterial({ 
+                map: videoTexture,
+                side: THREE.DoubleSide
+            });
+            const backgroundMesh = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
+            backgroundMesh.position.z = -1;
+            scene.add(backgroundMesh);
+
             // Configurar AR.js Source
             arToolkitSource = new THREEx.ArToolkitSource({
                 sourceType: 'webcam',
@@ -133,8 +157,12 @@
                 displayHeight: window.innerHeight,
             });
 
+            // Conectar el video directamente
+            arToolkitSource.domElement = video;
+
             // Inicializar la fuente
             arToolkitSource.init(() => {
+                console.log('AR Source inicializado');
                 arToolkitSource.onResizeElement();
                 arToolkitSource.onResize();
             });
@@ -149,6 +177,7 @@
 
             // Inicializar el contexto
             arToolkitContext.init(() => {
+                console.log('AR Context inicializado');
                 camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
                 
                 // Crear el marcador DESPUÉS de que el contexto esté inicializado
@@ -213,6 +242,7 @@
                     if (markerVisible && !markerFound) {
                         markerFound = true;
                         document.getElementById('status').textContent = '✅ Marcador detectado!';
+                        console.log('Marcador detectado!');
                         if (window.overlayVideo) {
                             window.overlayVideo.play().catch(e => console.log('Error al reproducir:', e));
                         }
