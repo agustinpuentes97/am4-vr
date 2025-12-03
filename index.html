@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AR Video Marker</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar-threex.js"></script>
     <style>
         body {
             margin: 0;
@@ -140,33 +138,44 @@
             
             // Esperar a que THREEx esté disponible
             let attempts = 0;
-            const maxAttempts = 10;
+            const maxAttempts = 30; // Más intentos
             const checkTHREEx = setInterval(() => {
                 attempts++;
                 if (typeof THREEx !== 'undefined') {
                     clearInterval(checkTHREEx);
+                    console.log('THREEx encontrado después de', attempts, 'intentos');
                     initARCore();
                 } else if (attempts >= maxAttempts) {
                     clearInterval(checkTHREEx);
-                    console.error('THREEx no se cargó después de múltiples intentos');
-                    // Intentar cargar manualmente
+                    console.error('THREEx no se cargó después de', maxAttempts, 'intentos');
+                    console.log('Intentando cargar AR.js manualmente...');
                     loadARJSManually();
                 }
             }, 500);
         }
         
         function loadARJSManually() {
-            console.log('Intentando cargar AR.js manualmente...');
             const script1 = document.createElement('script');
-            script1.src = 'https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar.js';
+            script1.src = 'https://raw.githack.com/AR-js-org/AR.js/master/three.js/build/ar.js';
             script1.onload = function() {
+                console.log('ar.js cargado desde githack');
                 const script2 = document.createElement('script');
-                script2.src = 'https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar-threex.js';
+                script2.src = 'https://raw.githack.com/AR-js-org/AR.js/master/three.js/build/ar-threex.js';
                 script2.onload = function() {
-                    console.log('AR.js cargado manualmente');
-                    initARCore();
+                    console.log('ar-threex.js cargado desde githack');
+                    if (typeof THREEx !== 'undefined') {
+                        initARCore();
+                    } else {
+                        console.error('THREEx aún no disponible después de cargar manualmente');
+                    }
+                };
+                script2.onerror = function() {
+                    console.error('Error al cargar ar-threex.js desde githack');
                 };
                 document.head.appendChild(script2);
+            };
+            script1.onerror = function() {
+                console.error('Error al cargar ar.js desde githack');
             };
             document.head.appendChild(script1);
         }
