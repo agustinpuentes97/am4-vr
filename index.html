@@ -57,7 +57,7 @@
         vr-mode-ui="enabled: false" 
         xr-mode-ui="enabled: false"
         arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
-        renderer="antialias: true; alpha: false;">
+        renderer="antialias: true; alpha: false; colorManagement: false;">
 
         <!-- Marcador basado en patrón -->
         <a-marker 
@@ -124,14 +124,6 @@
         // También intentar detectar cuando AR.js está listo de otra manera
         scene.addEventListener('renderstart', function() {
             console.log('Render iniciado');
-            // Dar un poco más de tiempo para que AR.js se inicialice
-            setTimeout(() => {
-                if (!cameraReady) {
-                    console.log('Marcando cámara como lista (fallback)');
-                    cameraReady = true;
-                    hideLoading();
-                }
-            }, 1500);
         });
 
         // Manejo del video
@@ -182,42 +174,55 @@
             showError('Esta aplicación requiere HTTPS para acceder a la cámara.');
         }
 
-        // Timeout de seguridad - ocultar loading después de 4 segundos si todo está listo
-        setTimeout(() => {
-            if (videoReady && !cameraReady) {
-                console.log('Timeout: forzando cámara como lista');
-                cameraReady = true;
-                hideLoading();
-            }
-        }, 4000);
 
-        // Verificar acceso a la cámara - pero AR.js lo manejará automáticamente
+        // NO pedir acceso a la cámara manualmente - AR.js lo hace automáticamente
         // Solo verificamos que el navegador soporte la API
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             showError('Tu navegador no soporta acceso a la cámara.');
         }
 
-        // Fallback: Si después de 3 segundos de conceder permisos no se detecta, marcar como listo
-        let permissionGranted = false;
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-                .then(function(stream) {
-                    console.log('Acceso a cámara concedido');
-                    permissionGranted = true;
-                    // AR.js manejará el stream, pero si no detecta el evento, usar fallback
-                    setTimeout(() => {
-                        if (!cameraReady && permissionGranted) {
-                            console.log('Usando fallback: marcando cámara como lista');
+        // Intentar acceder al sistema AR.js después de que la escena esté completamente cargada
+        scene.addEventListener('loaded', function() {
+            // Esperar un poco más para que AR.js se inicialice completamente
+            setTimeout(() => {
+                // Intentar múltiples formas de acceder al sistema AR
+                const arSystem = scene.systems.arjs || scene.systems['arjs'] || scene.components['arjs'];
+                
+                if (arSystem) {
+                    console.log('Sistema AR.js encontrado');
+                    
+                    // Intentar acceder al video de AR.js
+                    if (arSystem.arToolkitSource && arSystem.arToolkitSource.domElement) {
+                        const arVideo = arSystem.arToolkitSource.domElement;
+                        console.log('Video de AR.js encontrado');
+                        
+                        arVideo.addEventListener('loadedmetadata', function() {
+                            console.log('Metadata del video de AR.js cargado');
+                            cameraReady = true;
+                            hideLoading();
+                        });
+                        
+                        // También verificar si ya tiene metadata
+                        if (arVideo.readyState >= 1) {
+                            console.log('Video de AR.js ya está listo');
                             cameraReady = true;
                             hideLoading();
                         }
-                    }, 2500);
-                })
-                .catch(function(err) {
-                    console.error('Error al acceder a la cámara:', err);
-                    showError('No se pudo acceder a la cámara. Verifica los permisos en la configuración del navegador.');
-                });
-        }
+                    }
+                } else {
+                    console.log('Sistema AR.js no encontrado (esto es normal, AR.js se inicializa automáticamente)');
+                }
+            }, 1000);
+        });
+
+        // Fallback final: después de que se concedan permisos y pase tiempo, marcar como listo
+        setTimeout(() => {
+            if (videoReady && !cameraReady) {
+                console.log('Fallback final: marcando cámara como lista');
+                cameraReady = true;
+                hideLoading();
+            }
+        }, 3000);
     </script>
 </body>
 
