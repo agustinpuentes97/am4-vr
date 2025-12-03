@@ -40,6 +40,18 @@
             text-align: center;
             display: none;
         }
+        #debug {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1001;
+            font-size: 12px;
+            display: none;
+        }
         a-scene {
             width: 100vw;
             height: 100vh;
@@ -51,12 +63,13 @@
 <body>
     <div id="loading">Cargando cámara...</div>
     <div id="error"></div>
+    <div id="debug"></div>
     
     <a-scene 
         embedded 
         vr-mode-ui="enabled: false" 
         xr-mode-ui="enabled: false"
-        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
+        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: true; sourceWidth: 640; sourceHeight: 480; displayWidth: 640; displayHeight: 480;"
         renderer="antialias: true; alpha: false; colorManagement: false;">
 
         <!-- Marcador basado en patrón -->
@@ -95,7 +108,13 @@
         const scene = document.querySelector('a-scene');
         const loading = document.getElementById('loading');
         const errorDiv = document.getElementById('error');
+        const debugDiv = document.getElementById('debug');
         const video = document.getElementById('video');
+        
+        function updateDebug(info) {
+            debugDiv.innerHTML = info;
+            debugDiv.style.display = 'block';
+        }
         
         let arSystem = null;
         let cameraReady = false;
@@ -124,6 +143,10 @@
         // También intentar detectar cuando AR.js está listo de otra manera
         scene.addEventListener('renderstart', function() {
             console.log('Render iniciado');
+            // Verificar AR.js después de que el render inicie
+            setTimeout(() => {
+                checkARJS();
+            }, 1000);
         });
 
         // Manejo del video
@@ -182,47 +205,100 @@
         }
 
         // Intentar acceder al sistema AR.js después de que la escena esté completamente cargada
-        scene.addEventListener('loaded', function() {
-            // Esperar un poco más para que AR.js se inicialice completamente
-            setTimeout(() => {
-                // Intentar múltiples formas de acceder al sistema AR
-                const arSystem = scene.systems.arjs || scene.systems['arjs'] || scene.components['arjs'];
-                
+        function checkARJS() {
+            // Intentar múltiples formas de acceder al sistema AR
+            const arSystem = scene.systems.arjs || scene.systems['arjs'];
+            
                 if (arSystem) {
-                    console.log('Sistema AR.js encontrado');
+                    console.log('Sistema AR.js encontrado', arSystem);
+                    updateDebug('AR.js encontrado');
                     
                     // Intentar acceder al video de AR.js
-                    if (arSystem.arToolkitSource && arSystem.arToolkitSource.domElement) {
-                        const arVideo = arSystem.arToolkitSource.domElement;
-                        console.log('Video de AR.js encontrado');
+                    const arToolkitSource = arSystem.arToolkitSource;
+                    if (arToolkitSource && arToolkitSource.domElement) {
+                        const arVideo = arToolkitSource.domElement;
+                        console.log('Video de AR.js encontrado', arVideo);
+                        console.log('Video readyState:', arVideo.readyState);
+                        console.log('Video videoWidth:', arVideo.videoWidth);
+                        console.log('Video videoHeight:', arVideo.videoHeight);
                         
+                        updateDebug(`AR Video: ${arVideo.videoWidth}x${arVideo.videoHeight}, readyState: ${arVideo.readyState}`);
+                        
+                        // Verificar si el video tiene dimensiones (está funcionando)
+                        if (arVideo.videoWidth > 0 && arVideo.videoHeight > 0) {
+                            console.log('Video de AR.js tiene dimensiones, está funcionando');
+                            updateDebug(`AR Video OK: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
+                            cameraReady = true;
+                            hideLoading();
+                            return true;
+                        }
+                        
+                        // Escuchar eventos del video
                         arVideo.addEventListener('loadedmetadata', function() {
-                            console.log('Metadata del video de AR.js cargado');
+                            console.log('Metadata del video de AR.js cargado', arVideo.videoWidth, arVideo.videoHeight);
+                            updateDebug(`AR Video metadata: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
+                            if (arVideo.videoWidth > 0 && arVideo.videoHeight > 0) {
+                                cameraReady = true;
+                                hideLoading();
+                            }
+                        });
+                        
+                        arVideo.addEventListener('playing', function() {
+                            console.log('Video de AR.js está reproduciendo');
+                            updateDebug(`AR Video playing: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
                             cameraReady = true;
                             hideLoading();
                         });
-                        
-                        // También verificar si ya tiene metadata
-                        if (arVideo.readyState >= 1) {
-                            console.log('Video de AR.js ya está listo');
-                            cameraReady = true;
-                            hideLoading();
-                        }
+                    } else {
+                        console.log('arToolkitSource no encontrado');
+                        updateDebug('arToolkitSource no encontrado');
+                    }
+                    
+                    // Verificar el contexto de AR.js
+                    const arToolkitContext = arSystem.arToolkitContext;
+                    if (arToolkitContext) {
+                        console.log('AR Toolkit Context encontrado');
+                        updateDebug('AR Context OK');
                     }
                 } else {
-                    console.log('Sistema AR.js no encontrado (esto es normal, AR.js se inicializa automáticamente)');
+                    console.log('Sistema AR.js no encontrado aún');
+                    updateDebug('AR.js no encontrado');
                 }
-            }, 1000);
+            return false;
+        }
+
+        scene.addEventListener('loaded', function() {
+            console.log('Escena cargada');
+            // Intentar múltiples veces encontrar AR.js
+            let attempts = 0;
+            const maxAttempts = 10;
+            const checkInterval = setInterval(() => {
+                attempts++;
+                if (checkARJS() || attempts >= maxAttempts) {
+                    clearInterval(checkInterval);
+                    if (attempts >= maxAttempts && !cameraReady) {
+                        console.log('No se pudo encontrar AR.js después de múltiples intentos');
+                        // Forzar como listo después de un tiempo
+                        setTimeout(() => {
+                            cameraReady = true;
+                            hideLoading();
+                        }, 2000);
+                    }
+                }
+            }, 500);
         });
 
         // Fallback final: después de que se concedan permisos y pase tiempo, marcar como listo
         setTimeout(() => {
-            if (videoReady && !cameraReady) {
+            if (videoReady) {
                 console.log('Fallback final: marcando cámara como lista');
-                cameraReady = true;
-                hideLoading();
+                // Verificar una última vez
+                if (!checkARJS()) {
+                    cameraReady = true;
+                    hideLoading();
+                }
             }
-        }, 3000);
+        }, 4000);
     </script>
 </body>
 
