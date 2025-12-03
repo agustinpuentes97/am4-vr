@@ -79,17 +79,25 @@
             width: 100vw;
             height: 100vh;
             display: block;
-            position: relative;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 2;
+            background: transparent !important;
+        }
+        canvas.a-canvas {
+            background: transparent !important;
             z-index: 2;
         }
         #camera-video {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
             object-fit: cover;
             z-index: 1;
+            background: #000;
         }
     </style>
 </head>
@@ -104,8 +112,8 @@
         vr-mode-ui="enabled: false" 
         xr-mode-ui="enabled: false"
         arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: true;"
-        renderer="antialias: true; alpha: true; colorManagement: false;"
-        background="color: transparent;">
+        renderer="antialias: true; alpha: true; colorManagement: false; clearColor: 0x00000000;"
+        background="color: transparent; transparent: true;">
 
         <!-- Marcador basado en patrón -->
         <a-marker 
@@ -441,10 +449,24 @@
                 cameraVideo.style.left = '0';
                 cameraVideo.style.width = '100vw';
                 cameraVideo.style.height = '100vh';
-                cameraVideo.style.zIndex = '1';
+                cameraVideo.style.zIndex = '0';
                 cameraVideo.style.objectFit = 'cover';
                 cameraVideo.style.backgroundColor = '#000';
                 document.body.insertBefore(cameraVideo, document.body.firstChild);
+                
+                // Forzar que el canvas sea transparente
+                setTimeout(() => {
+                    const canvas = document.querySelector('canvas.a-canvas');
+                    if (canvas) {
+                        canvas.style.background = 'transparent';
+                        canvas.style.backgroundColor = 'transparent';
+                        console.log('Canvas configurado como transparente');
+                    }
+                    
+                    // También configurar la escena
+                    scene.setAttribute('background', 'transparent: true; color: transparent;');
+                    console.log('Escena configurada como transparente');
+                }, 100);
                 
                 console.log('Video element creado y agregado al DOM');
                 
