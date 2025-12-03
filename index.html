@@ -7,7 +7,23 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>AR Video Marker</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script>
+        // Verificar que AR.js se carga
+        window.addEventListener('load', function() {
+            console.log('AR.js disponible:', typeof ARjs !== 'undefined');
+            console.log('A-Frame disponible:', typeof AFRAME !== 'undefined');
+        });
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/aframe/build/aframe-ar.js"></script>
+    <script>
+        // Verificar después de cargar AR.js
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                console.log('AR.js después de carga:', typeof ARjs !== 'undefined');
+                console.log('AFRAME.arjs:', AFRAME && AFRAME.systems && AFRAME.systems.arjs);
+            }, 1000);
+        });
+    </script>
     <style>
         body {
             margin: 0;
@@ -69,7 +85,7 @@
         embedded 
         vr-mode-ui="enabled: false" 
         xr-mode-ui="enabled: false"
-        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: true; sourceWidth: 640; sourceHeight: 480; displayWidth: 640; displayHeight: 480;"
+        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: true;"
         renderer="antialias: true; alpha: false; colorManagement: false;">
 
         <!-- Marcador basado en patrón -->
@@ -310,24 +326,88 @@
 
         scene.addEventListener('loaded', function() {
             console.log('Escena cargada');
+            
+            // Verificar si AR.js está disponible globalmente
+            console.log('ARjs global:', typeof ARjs !== 'undefined' ? ARjs : 'no disponible');
+            console.log('AFRAME.systems:', AFRAME && AFRAME.systems ? Object.keys(AFRAME.systems) : 'no disponible');
+            
+            // Verificar el componente arjs de la escena
+            const arjsComponent = scene.getAttribute('arjs');
+            console.log('Atributo arjs de la escena:', arjsComponent);
+            
             // Intentar múltiples veces encontrar AR.js
             let attempts = 0;
-            const maxAttempts = 10;
+            const maxAttempts = 15;
             const checkInterval = setInterval(() => {
                 attempts++;
+                console.log(`Intento ${attempts} de encontrar AR.js`);
+                
+                // Verificar si el sistema AR.js se ha registrado
+                if (scene.systems) {
+                    console.log('Sistemas disponibles:', Object.keys(scene.systems));
+                }
+                
                 if (checkARJS() || attempts >= maxAttempts) {
                     clearInterval(checkInterval);
                     if (attempts >= maxAttempts && !cameraReady) {
                         console.log('No se pudo encontrar AR.js después de múltiples intentos');
-                        // Forzar como listo después de un tiempo
-                        setTimeout(() => {
-                            cameraReady = true;
-                            hideLoading();
-                        }, 2000);
+                        console.log('Intentando solución alternativa...');
+                        
+                        // Intentar crear el video manualmente
+                        tryCreateCameraVideo();
                     }
                 }
             }, 500);
         });
+        
+        // Función para intentar crear el video de la cámara manualmente
+        function tryCreateCameraVideo() {
+            console.log('Intentando crear video de cámara manualmente');
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                })
+                .then(function(stream) {
+                    console.log('Stream de cámara obtenido manualmente');
+                    // Crear un video element y agregarlo al DOM temporalmente para verificar
+                    const testVideo = document.createElement('video');
+                    testVideo.srcObject = stream;
+                    testVideo.autoplay = true;
+                    testVideo.playsinline = true;
+                    testVideo.style.position = 'fixed';
+                    testVideo.style.top = '0';
+                    testVideo.style.left = '0';
+                    testVideo.style.width = '100%';
+                    testVideo.style.height = '100%';
+                    testVideo.style.zIndex = '999';
+                    testVideo.style.objectFit = 'cover';
+                    document.body.appendChild(testVideo);
+                    
+                    testVideo.addEventListener('loadedmetadata', function() {
+                        console.log('Video de prueba tiene dimensiones:', testVideo.videoWidth, testVideo.videoHeight);
+                        updateDebug(`Video manual: ${testVideo.videoWidth}x${testVideo.videoHeight}`);
+                        // Ocultar después de 2 segundos para ver si AR.js lo toma
+                        setTimeout(() => {
+                            testVideo.remove();
+                        }, 2000);
+                    });
+                    
+                    // Marcar como listo aunque AR.js no funcione
+                    setTimeout(() => {
+                        cameraReady = true;
+                        hideLoading();
+                    }, 1000);
+                })
+                .catch(function(err) {
+                    console.error('Error al obtener cámara manualmente:', err);
+                    showError('No se pudo acceder a la cámara. Error: ' + err.message);
+                });
+            }
+        }
 
         // Fallback final: después de que se concedan permisos y pase tiempo, marcar como listo
         setTimeout(() => {
