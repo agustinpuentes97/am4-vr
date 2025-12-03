@@ -146,6 +146,19 @@
             // Verificar AR.js después de que el render inicie
             setTimeout(() => {
                 checkARJS();
+                // También verificar el canvas
+                const canvas = scene.canvas || document.querySelector('canvas');
+                if (canvas) {
+                    console.log('Canvas encontrado:', canvas.width, 'x', canvas.height);
+                    updateDebug(`Canvas: ${canvas.width}x${canvas.height}`);
+                    // Verificar si el canvas tiene contenido
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        const imageData = ctx.getImageData(0, 0, Math.min(10, canvas.width), Math.min(10, canvas.height));
+                        const hasContent = imageData.data.some(pixel => pixel !== 0);
+                        console.log('Canvas tiene contenido:', hasContent);
+                    }
+                }
             }, 1000);
         });
 
@@ -206,64 +219,92 @@
 
         // Intentar acceder al sistema AR.js después de que la escena esté completamente cargada
         function checkARJS() {
-            // Intentar múltiples formas de acceder al sistema AR
-            const arSystem = scene.systems.arjs || scene.systems['arjs'];
-            
-                if (arSystem) {
-                    console.log('Sistema AR.js encontrado', arSystem);
-                    updateDebug('AR.js encontrado');
-                    
-                    // Intentar acceder al video de AR.js
-                    const arToolkitSource = arSystem.arToolkitSource;
-                    if (arToolkitSource && arToolkitSource.domElement) {
-                        const arVideo = arToolkitSource.domElement;
-                        console.log('Video de AR.js encontrado', arVideo);
-                        console.log('Video readyState:', arVideo.readyState);
-                        console.log('Video videoWidth:', arVideo.videoWidth);
-                        console.log('Video videoHeight:', arVideo.videoHeight);
-                        
-                        updateDebug(`AR Video: ${arVideo.videoWidth}x${arVideo.videoHeight}, readyState: ${arVideo.readyState}`);
-                        
-                        // Verificar si el video tiene dimensiones (está funcionando)
-                        if (arVideo.videoWidth > 0 && arVideo.videoHeight > 0) {
-                            console.log('Video de AR.js tiene dimensiones, está funcionando');
-                            updateDebug(`AR Video OK: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
-                            cameraReady = true;
-                            hideLoading();
-                            return true;
+            // Método 1: Buscar el sistema AR.js en scene.systems
+            let arSystem = null;
+            if (scene.systems) {
+                arSystem = scene.systems.arjs || scene.systems['arjs'];
+                // También buscar en todas las propiedades
+                if (!arSystem) {
+                    for (let key in scene.systems) {
+                        if (key.toLowerCase().includes('ar') || (scene.systems[key] && scene.systems[key].arToolkitSource)) {
+                            arSystem = scene.systems[key];
+                            console.log('AR.js encontrado en:', key);
+                            break;
                         }
-                        
-                        // Escuchar eventos del video
-                        arVideo.addEventListener('loadedmetadata', function() {
-                            console.log('Metadata del video de AR.js cargado', arVideo.videoWidth, arVideo.videoHeight);
-                            updateDebug(`AR Video metadata: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
-                            if (arVideo.videoWidth > 0 && arVideo.videoHeight > 0) {
-                                cameraReady = true;
-                                hideLoading();
-                            }
-                        });
-                        
-                        arVideo.addEventListener('playing', function() {
-                            console.log('Video de AR.js está reproduciendo');
-                            updateDebug(`AR Video playing: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
-                            cameraReady = true;
-                            hideLoading();
-                        });
-                    } else {
-                        console.log('arToolkitSource no encontrado');
-                        updateDebug('arToolkitSource no encontrado');
                     }
-                    
-                    // Verificar el contexto de AR.js
-                    const arToolkitContext = arSystem.arToolkitContext;
-                    if (arToolkitContext) {
-                        console.log('AR Toolkit Context encontrado');
-                        updateDebug('AR Context OK');
-                    }
-                } else {
-                    console.log('Sistema AR.js no encontrado aún');
-                    updateDebug('AR.js no encontrado');
                 }
+            }
+            
+            // Método 2: Buscar el video de AR.js directamente en el DOM
+            const allVideos = document.querySelectorAll('video');
+            let arVideo = null;
+            for (let v of allVideos) {
+                // AR.js crea un video que no es nuestro video de contenido
+                if (v.id !== 'video' && v.srcObject) {
+                    arVideo = v;
+                    console.log('Video de AR.js encontrado en DOM', arVideo);
+                    break;
+                }
+            }
+            
+            // Método 3: Buscar en el canvas o en elementos de la escena
+            const canvas = scene.canvas || scene.renderer?.domElement;
+            if (canvas) {
+                console.log('Canvas encontrado', canvas);
+            }
+            
+            if (arSystem) {
+                console.log('Sistema AR.js encontrado', arSystem);
+                updateDebug('AR.js sistema encontrado');
+                
+                // Intentar acceder al video de AR.js desde el sistema
+                const arToolkitSource = arSystem.arToolkitSource;
+                if (arToolkitSource && arToolkitSource.domElement) {
+                    arVideo = arToolkitSource.domElement;
+                }
+            }
+            
+            if (arVideo) {
+                console.log('Video de AR.js encontrado', arVideo);
+                console.log('Video readyState:', arVideo.readyState);
+                console.log('Video videoWidth:', arVideo.videoWidth);
+                console.log('Video videoHeight:', arVideo.videoHeight);
+                console.log('Video srcObject:', arVideo.srcObject);
+                
+                updateDebug(`AR Video: ${arVideo.videoWidth}x${arVideo.videoHeight}, ready: ${arVideo.readyState}`);
+                
+                // Verificar si el video tiene dimensiones (está funcionando)
+                if (arVideo.videoWidth > 0 && arVideo.videoHeight > 0) {
+                    console.log('Video de AR.js tiene dimensiones, está funcionando');
+                    updateDebug(`AR Video OK: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
+                    cameraReady = true;
+                    hideLoading();
+                    return true;
+                }
+                
+                // Escuchar eventos del video
+                arVideo.addEventListener('loadedmetadata', function() {
+                    console.log('Metadata del video de AR.js cargado', arVideo.videoWidth, arVideo.videoHeight);
+                    updateDebug(`AR Video metadata: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
+                    if (arVideo.videoWidth > 0 && arVideo.videoHeight > 0) {
+                        cameraReady = true;
+                        hideLoading();
+                    }
+                });
+                
+                arVideo.addEventListener('playing', function() {
+                    console.log('Video de AR.js está reproduciendo');
+                    updateDebug(`AR Video playing: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
+                    cameraReady = true;
+                    hideLoading();
+                });
+                
+                return false; // Encontrado pero aún no tiene dimensiones
+            } else {
+                console.log('Video de AR.js no encontrado');
+                updateDebug('AR Video no encontrado');
+            }
+            
             return false;
         }
 
