@@ -7,21 +7,28 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>AR Video Marker</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/aframe/build/aframe-ar.js" 
+            onerror="console.error('Error al cargar AR.js desde CDN')"
+            onload="console.log('AR.js cargado desde CDN')"></script>
     <script>
         // Verificar que AR.js se carga
         window.addEventListener('load', function() {
             console.log('AR.js disponible:', typeof ARjs !== 'undefined');
             console.log('A-Frame disponible:', typeof AFRAME !== 'undefined');
-        });
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/aframe/build/aframe-ar.js"></script>
-    <script>
-        // Verificar después de cargar AR.js
-        window.addEventListener('load', function() {
-            setTimeout(() => {
-                console.log('AR.js después de carga:', typeof ARjs !== 'undefined');
-                console.log('AFRAME.arjs:', AFRAME && AFRAME.systems && AFRAME.systems.arjs);
-            }, 1000);
+            
+            // Intentar cargar desde otra fuente si falla
+            if (typeof ARjs === 'undefined' && !AFRAME.systems.arjs) {
+                console.log('AR.js no se cargó, intentando fuente alternativa...');
+                const script = document.createElement('script');
+                script.src = 'https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js';
+                script.onerror = function() {
+                    console.error('Error al cargar AR.js desde fuente alternativa');
+                };
+                script.onload = function() {
+                    console.log('AR.js cargado desde fuente alternativa');
+                };
+                document.head.appendChild(script);
+            }
         });
     </script>
     <style>
@@ -72,6 +79,17 @@
             width: 100vw;
             height: 100vh;
             display: block;
+            position: relative;
+            z-index: 2;
+        }
+        #camera-video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
         }
     </style>
 </head>
@@ -335,17 +353,30 @@
             const arjsComponent = scene.getAttribute('arjs');
             console.log('Atributo arjs de la escena:', arjsComponent);
             
+            // Verificar si el sistema AR.js se ha registrado
+            if (scene.systems) {
+                console.log('Sistemas disponibles:', Object.keys(scene.systems));
+                // Buscar si hay algún sistema relacionado con AR
+                for (let key of Object.keys(scene.systems)) {
+                    if (key.toLowerCase().includes('ar')) {
+                        console.log('Sistema AR encontrado:', key, scene.systems[key]);
+                    }
+                }
+            }
+            
+            // Si AR.js no está disponible, usar solución alternativa inmediatamente
+            if (typeof ARjs === 'undefined' && !scene.systems.arjs && !scene.systems['arjs']) {
+                console.log('AR.js no está disponible, usando solución alternativa');
+                tryCreateCameraVideo();
+                return;
+            }
+            
             // Intentar múltiples veces encontrar AR.js
             let attempts = 0;
-            const maxAttempts = 15;
+            const maxAttempts = 10;
             const checkInterval = setInterval(() => {
                 attempts++;
                 console.log(`Intento ${attempts} de encontrar AR.js`);
-                
-                // Verificar si el sistema AR.js se ha registrado
-                if (scene.systems) {
-                    console.log('Sistemas disponibles:', Object.keys(scene.systems));
-                }
                 
                 if (checkARJS() || attempts >= maxAttempts) {
                     clearInterval(checkInterval);
@@ -373,39 +404,48 @@
                 })
                 .then(function(stream) {
                     console.log('Stream de cámara obtenido manualmente');
-                    // Crear un video element y agregarlo al DOM temporalmente para verificar
-                    const testVideo = document.createElement('video');
-                    testVideo.srcObject = stream;
-                    testVideo.autoplay = true;
-                    testVideo.playsinline = true;
-                    testVideo.style.position = 'fixed';
-                    testVideo.style.top = '0';
-                    testVideo.style.left = '0';
-                    testVideo.style.width = '100%';
-                    testVideo.style.height = '100%';
-                    testVideo.style.zIndex = '999';
-                    testVideo.style.objectFit = 'cover';
-                    document.body.appendChild(testVideo);
+                    updateDebug('Cámara obtenida manualmente');
                     
-                    testVideo.addEventListener('loadedmetadata', function() {
-                        console.log('Video de prueba tiene dimensiones:', testVideo.videoWidth, testVideo.videoHeight);
-                        updateDebug(`Video manual: ${testVideo.videoWidth}x${testVideo.videoHeight}`);
-                        // Ocultar después de 2 segundos para ver si AR.js lo toma
-                        setTimeout(() => {
-                            testVideo.remove();
-                        }, 2000);
-                    });
+                    // Crear un video element como fondo
+                    const cameraVideo = document.createElement('video');
+                    cameraVideo.id = 'camera-video';
+                    cameraVideo.srcObject = stream;
+                    cameraVideo.autoplay = true;
+                    cameraVideo.playsinline = true;
+                    cameraVideo.muted = true;
+                    cameraVideo.style.position = 'fixed';
+                    cameraVideo.style.top = '0';
+                    cameraVideo.style.left = '0';
+                    cameraVideo.style.width = '100%';
+                    cameraVideo.style.height = '100%';
+                    cameraVideo.style.zIndex = '1';
+                    cameraVideo.style.objectFit = 'cover';
+                    document.body.appendChild(cameraVideo);
                     
-                    // Marcar como listo aunque AR.js no funcione
-                    setTimeout(() => {
+                    cameraVideo.addEventListener('loadedmetadata', function() {
+                        console.log('Video de cámara tiene dimensiones:', cameraVideo.videoWidth, cameraVideo.videoHeight);
+                        updateDebug(`Cámara: ${cameraVideo.videoWidth}x${cameraVideo.videoHeight}`);
                         cameraReady = true;
                         hideLoading();
-                    }, 1000);
+                    });
+                    
+                    cameraVideo.addEventListener('playing', function() {
+                        console.log('Video de cámara está reproduciendo');
+                        cameraReady = true;
+                        hideLoading();
+                    });
+                    
+                    // Forzar play
+                    cameraVideo.play().catch(err => {
+                        console.error('Error al reproducir video de cámara:', err);
+                    });
                 })
                 .catch(function(err) {
                     console.error('Error al obtener cámara manualmente:', err);
                     showError('No se pudo acceder a la cámara. Error: ' + err.message);
                 });
+            } else {
+                showError('Tu navegador no soporta acceso a la cámara.');
             }
         }
 
