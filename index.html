@@ -6,18 +6,25 @@
     <link rel="icon" href="data:,">
     <title>Realidad Aumentada - Marker Detection</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
         body {
             margin: 0;
             padding: 0;
             overflow: hidden;
             font-family: Arial, sans-serif;
             background: #000;
+            width: 100vw;
+            height: 100vh;
         }
         #info {
             position: absolute;
             top: 10px;
             left: 10px;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.8);
             color: white;
             padding: 15px;
             border-radius: 8px;
@@ -32,28 +39,23 @@
             margin: 5px 0;
             font-size: 14px;
         }
-        #videoContainer {
+        #videoElement {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-        }
-        #arVideo {
-            width: 100%;
-            height: 100%;
             object-fit: cover;
+            z-index: 0;
+            background: #000;
         }
-        canvas {
+        #canvas {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             z-index: 1;
-        }
-        #arVideo {
-            z-index: 0;
         }
     </style>
 </head>
@@ -65,136 +67,125 @@
         <p id="status">Inicializando...</p>
     </div>
 
-    <div id="videoContainer">
-        <video id="arVideo" autoplay playsinline muted></video>
-    </div>
+    <video id="videoElement" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
 
-    <!-- Usar versiones estables y compatibles -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.138.3/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsartoolkit5@0.0.9/jsartoolkit/artoolkit.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsartoolkit5@0.0.9/jsartoolkit/artoolkit.three.js"></script>
 
     <script>
-        let video, canvas, context;
+        const statusEl = document.getElementById('status');
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('canvas');
+        
         let arToolkitSource, arToolkitContext, arMarkerControls;
         let scene, camera, renderer;
-        let videoTexture, videoMesh;
-        let markerFound = false;
+        let videoMesh, overlayVideo;
 
-        async function init() {
-            const statusEl = document.getElementById('status');
-            
-            // Obtener elementos
-            video = document.getElementById('arVideo');
-            canvas = document.getElementById('canvas');
-            context = canvas.getContext('2d');
-
-            // Solicitar acceso a la cámara
+        // Paso 1: Inicializar cámara
+        async function initCamera() {
             try {
+                statusEl.textContent = 'Solicitando acceso a la cámara...';
+                
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'environment',
+                    video: {
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
                     } 
                 });
+                
                 video.srcObject = stream;
-                await video.play();
-
-                statusEl.textContent = 'Cámara activa. Buscando marcador...';
-
+                
+                // Asegurar que el video se reproduzca
+                video.play().then(() => {
+                    console.log('Video reproduciéndose');
+                    statusEl.textContent = 'Cámara activa. Configurando AR...';
+                }).catch(err => {
+                    console.error('Error al reproducir video:', err);
+                    statusEl.textContent = 'Error al reproducir video';
+                });
+                
+                // Esperar a que el video esté listo
                 video.addEventListener('loadedmetadata', () => {
-                    setupAR();
+                    console.log('Video metadata cargado:', video.videoWidth, video.videoHeight);
+                    // Esperar un poco más para asegurar que el video esté listo
+                    setTimeout(() => {
+                        initAR();
+                    }, 500);
                 }, { once: true });
+                
             } catch (err) {
                 statusEl.textContent = 'Error: ' + err.message;
                 console.error('Error al acceder a la cámara:', err);
             }
         }
 
-        function setupAR() {
-            const statusEl = document.getElementById('status');
-            
-            console.log('Configurando AR...', {
-                videoWidth: video.videoWidth,
-                videoHeight: video.videoHeight
-            });
+        // Paso 2: Inicializar AR
+        function initAR() {
+            console.log('Inicializando AR...');
             
             // Configurar Three.js
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer({ 
-                alpha: true, 
-                antialias: true,
-                canvas: canvas
+            
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                alpha: true,
+                antialias: true
             });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setClearColor(0x000000, 0);
 
-            // Crear textura del video de la cámara para el fondo
-            const videoTexture = new THREE.VideoTexture(video);
-            videoTexture.minFilter = THREE.LinearFilter;
-            videoTexture.magFilter = THREE.LinearFilter;
-            
-            // Crear plano de fondo con el video
-            const backgroundGeometry = new THREE.PlaneGeometry(2, 2);
-            const backgroundMaterial = new THREE.MeshBasicMaterial({ 
-                map: videoTexture,
-                side: THREE.DoubleSide
-            });
-            const backgroundMesh = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
-            backgroundMesh.position.z = -1;
-            scene.add(backgroundMesh);
-
             // Configurar AR.js Source
             arToolkitSource = new THREEx.ArToolkitSource({
                 sourceType: 'webcam',
-                sourceWidth: video.videoWidth || 640,
-                sourceHeight: video.videoHeight || 480,
+                sourceWidth: video.videoWidth,
+                sourceHeight: video.videoHeight,
                 displayWidth: window.innerWidth,
-                displayHeight: window.innerHeight,
+                displayHeight: window.innerHeight
             });
 
-            // Conectar el video directamente
+            // Conectar el video
             arToolkitSource.domElement = video;
 
-            // Inicializar la fuente
+            // Inicializar source
             arToolkitSource.init(() => {
                 console.log('AR Source inicializado');
-                arToolkitSource.onResizeElement();
-                arToolkitSource.onResize();
-            });
-
-            // Configurar AR.js Context
-            arToolkitContext = new THREEx.ArToolkitContext({
-                cameraParametersUrl: 'https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/data/camera_para.dat',
-                detectionMode: 'mono',
-                canvasWidth: video.videoWidth || 640,
-                canvasHeight: video.videoHeight || 480,
-            });
-
-            // Inicializar el contexto
-            arToolkitContext.init(() => {
-                console.log('AR Context inicializado');
-                camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
                 
-                // Crear el marcador DESPUÉS de que el contexto esté inicializado
-                createMarker();
+                // Configurar AR.js Context
+                arToolkitContext = new THREEx.ArToolkitContext({
+                    cameraParametersUrl: 'https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/data/camera_para.dat',
+                    detectionMode: 'mono',
+                    canvasWidth: video.videoWidth,
+                    canvasHeight: video.videoHeight
+                });
+
+                // Inicializar context
+                arToolkitContext.init(() => {
+                    console.log('AR Context inicializado');
+                    camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+                    
+                    // Crear marcador
+                    createMarker();
+                });
             });
         }
 
+        // Paso 3: Crear marcador y video
         function createMarker() {
-            // Cargar el marcador
+            console.log('Creando marcador...');
+            
+            // Crear marcador
             arMarkerControls = new THREEx.ArMarkerControls(arToolkitContext, camera, {
                 type: 'pattern',
                 patternUrl: 'assets/marker1.patt',
                 changeMatrixMode: 'cameraTransformMatrix'
             });
 
-            // Crear el video overlay
-            const overlayVideo = document.createElement('video');
+            // Crear elemento de video para el overlay
+            overlayVideo = document.createElement('video');
             overlayVideo.src = 'assets/video1.mp4';
             overlayVideo.loop = true;
             overlayVideo.playsInline = true;
@@ -202,17 +193,16 @@
             document.body.appendChild(overlayVideo);
 
             // Crear textura de video
-            videoTexture = new THREE.VideoTexture(overlayVideo);
+            const videoTexture = new THREE.VideoTexture(overlayVideo);
             videoTexture.minFilter = THREE.LinearFilter;
             videoTexture.magFilter = THREE.LinearFilter;
 
-            // Crear geometría y material
+            // Crear mesh con el video
             const geometry = new THREE.PlaneGeometry(1.6, 1);
-            const material = new THREE.MeshBasicMaterial({ 
-                map: videoTexture, 
+            const material = new THREE.MeshBasicMaterial({
+                map: videoTexture,
                 side: THREE.DoubleSide,
-                transparent: true,
-                opacity: 1
+                transparent: true
             });
             
             videoMesh = new THREE.Mesh(geometry, material);
@@ -221,52 +211,45 @@
             videoMesh.visible = false;
             scene.add(videoMesh);
 
-            // Guardar referencia al video
-            window.overlayVideo = overlayVideo;
-
-            // Iniciar animación
+            statusEl.textContent = 'Listo! Buscando marcador...';
+            
+            // Iniciar loop de animación
             animate();
         }
 
+        // Paso 4: Loop de animación
         function animate() {
             requestAnimationFrame(animate);
 
             if (arToolkitSource && arToolkitSource.ready !== false && arToolkitContext) {
-                // Actualizar el contexto AR
+                // Actualizar AR
                 arToolkitContext.update(arToolkitSource.domElement);
                 
-                // Verificar si el marcador es visible
+                // Verificar marcador
                 if (arMarkerControls && arMarkerControls.object3d) {
-                    const markerVisible = arMarkerControls.object3d.visible;
+                    const isVisible = arMarkerControls.object3d.visible;
                     
-                    if (markerVisible && !markerFound) {
-                        markerFound = true;
-                        document.getElementById('status').textContent = '✅ Marcador detectado!';
-                        console.log('Marcador detectado!');
-                        if (window.overlayVideo) {
-                            window.overlayVideo.play().catch(e => console.log('Error al reproducir:', e));
-                        }
-                        if (videoMesh) {
+                    if (isVisible) {
+                        if (!videoMesh.visible) {
                             videoMesh.visible = true;
+                            statusEl.textContent = '✅ Marcador detectado!';
+                            overlayVideo.play().catch(e => console.error('Error al reproducir:', e));
                         }
-                    } else if (!markerVisible && markerFound) {
-                        markerFound = false;
-                        document.getElementById('status').textContent = 'Buscando marcador...';
-                        if (window.overlayVideo) {
-                            window.overlayVideo.pause();
-                        }
-                        if (videoMesh) {
+                    } else {
+                        if (videoMesh.visible) {
                             videoMesh.visible = false;
+                            statusEl.textContent = 'Buscando marcador...';
+                            overlayVideo.pause();
                         }
                     }
                 }
             }
 
-            // Renderizar la escena
+            // Renderizar
             renderer.render(scene, camera);
         }
 
-        // Manejar redimensionamiento
+        // Manejar resize
         window.addEventListener('resize', () => {
             if (arToolkitSource) {
                 arToolkitSource.onResizeElement();
@@ -279,8 +262,11 @@
             }
         });
 
-        // Inicializar cuando la página cargue
-        window.addEventListener('load', init);
+        // Iniciar cuando la página cargue
+        window.addEventListener('load', () => {
+            console.log('Página cargada, iniciando cámara...');
+            initCamera();
+        });
     </script>
 </body>
 </html>
