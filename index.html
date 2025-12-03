@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AR Video Marker</title>
-    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar-threex.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar-threex.js"></script>
     <style>
         body {
             margin: 0;
@@ -32,8 +32,9 @@
             height: 100vh;
             object-fit: cover;
             z-index: 1;
+            background: #000;
         }
-        canvas {
+        #canvas {
             position: fixed;
             top: 0;
             left: 0;
@@ -73,8 +74,58 @@
         let scene, camera, renderer;
         let markerRoot, markerControls;
         let markerDetected = false;
+        let animationId;
 
-        function init() {
+        // Primero obtener la cámara y mostrarla
+        function getCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                loading.textContent = 'Tu navegador no soporta cámara';
+                return;
+            }
+            
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            })
+            .then(function(stream) {
+                console.log('✓ Cámara obtenida');
+                videoBg.srcObject = stream;
+                videoBg.style.display = 'block';
+                
+                videoBg.play().then(() => {
+                    console.log('✓ Video de cámara reproduciendo');
+                }).catch(err => {
+                    console.error('Error al reproducir:', err);
+                });
+                
+                videoBg.addEventListener('loadedmetadata', function() {
+                    console.log('✓ Metadata cargado:', videoBg.videoWidth, 'x', videoBg.videoHeight);
+                    loading.style.display = 'none';
+                    
+                    // Inicializar AR después de que la cámara esté lista
+                    setTimeout(() => {
+                        initAR();
+                    }, 500);
+                });
+            })
+            .catch(function(err) {
+                console.error('✗ Error cámara:', err);
+                loading.textContent = 'Error: ' + err.message;
+            });
+        }
+
+        function initAR() {
+            console.log('Inicializando AR...');
+            
+            // Verificar que THREEx esté disponible
+            if (typeof THREEx === 'undefined') {
+                console.error('THREEx no está disponible');
+                return;
+            }
+            
             // Configurar canvas
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -85,127 +136,80 @@
             renderer = new THREE.WebGLRenderer({ 
                 canvas: canvas,
                 alpha: true,
-                antialias: true,
-                premultipliedAlpha: false
+                antialias: true
             });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setClearColor(0x000000, 0); // Transparente
+            renderer.setClearColor(0x000000, 0);
             
             // Inicializar AR.js
-            arToolkitSource = new THREEx.ArToolkitSource({
-                sourceType: 'webcam',
-                sourceWidth: 1280,
-                sourceHeight: 720,
-                displayWidth: window.innerWidth,
-                displayHeight: window.innerHeight
-            });
-            
-            arToolkitContext = new THREEx.ArToolkitContext({
-                cameraParametersUrl: 'https://cdn.jsdelivr.net/npm/ar.js@3.3.2/data/data/camera_para.dat',
-                detectionMode: 'mono',
-                maxDetectionRate: 30,
-                canvasWidth: 1280,
-                canvasHeight: 720
-            });
-            
-            // Inicializar fuente
-            arToolkitSource.init(function() {
-                arToolkitSource.onResizeElement();
-                arToolkitSource.copyElementSizeTo(renderer.domElement);
-                
-                // Inicializar contexto
-                arToolkitContext.init(function() {
-                    camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
-                });
-            });
-            
-            // Crear grupo para el marcador
-            markerRoot = new THREE.Group();
-            scene.add(markerRoot);
-            
-            // Controles del marcador
-            markerControls = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
-                type: 'pattern',
-                patternUrl: 'assets/marker1.patt',
-                changeMatrixMode: 'cameraTransformMatrix'
-            });
-            
-            // Eventos del marcador
-            markerControls.addEventListener('markerFound', function() {
-                if (!markerDetected) {
-                    console.log('✓ Marcador detectado');
-                    markerDetected = true;
-                    videoOverlay.style.display = 'block';
-                    videoOverlay.play().catch(err => console.error('Error:', err));
-                }
-            });
-            
-            markerControls.addEventListener('markerLost', function() {
-                if (markerDetected) {
-                    console.log('Marcador perdido');
-                    markerDetected = false;
-                    videoOverlay.style.display = 'none';
-                    videoOverlay.pause();
-                }
-            });
-            
-            // Obtener acceso a la cámara
-            navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: 'environment',
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                } 
-            })
-            .then(function(stream) {
-                console.log('Cámara obtenida');
-                videoBg.srcObject = stream;
-                
-                // Forzar reproducción
-                videoBg.play().then(() => {
-                    console.log('Video de cámara reproduciendo');
-                }).catch(err => {
-                    console.error('Error al reproducir video:', err);
+            try {
+                arToolkitSource = new THREEx.ArToolkitSource({
+                    sourceType: 'webcam',
+                    sourceWidth: 1280,
+                    sourceHeight: 720,
+                    displayWidth: window.innerWidth,
+                    displayHeight: window.innerHeight
                 });
                 
-                videoBg.addEventListener('loadedmetadata', function() {
-                    console.log('Metadata de cámara cargado:', videoBg.videoWidth, 'x', videoBg.videoHeight);
+                arToolkitContext = new THREEx.ArToolkitContext({
+                    cameraParametersUrl: 'https://cdn.jsdelivr.net/npm/ar.js@3.3.2/data/data/camera_para.dat',
+                    detectionMode: 'mono',
+                    maxDetectionRate: 30,
+                    canvasWidth: 1280,
+                    canvasHeight: 720
+                });
+                
+                arToolkitSource.init(function() {
+                    arToolkitSource.onResizeElement();
+                    arToolkitSource.copyElementSizeTo(renderer.domElement);
                     
-                    // Asegurar que el video sea visible
-                    videoBg.style.display = 'block';
-                    
-                    // Configurar AR.js
-                    if (arToolkitSource) {
+                    arToolkitContext.init(function() {
+                        camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+                        console.log('✓ AR.js inicializado');
+                        
+                        // Crear marcador
+                        markerRoot = new THREE.Group();
+                        scene.add(markerRoot);
+                        
+                        markerControls = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
+                            type: 'pattern',
+                            patternUrl: 'assets/marker1.patt',
+                            changeMatrixMode: 'cameraTransformMatrix'
+                        });
+                        
+                        markerControls.addEventListener('markerFound', function() {
+                            if (!markerDetected) {
+                                console.log('✓✓✓ MARCADOR DETECTADO ✓✓✓');
+                                markerDetected = true;
+                                videoOverlay.style.display = 'block';
+                                videoOverlay.play().catch(err => console.error('Error:', err));
+                            }
+                        });
+                        
+                        markerControls.addEventListener('markerLost', function() {
+                            if (markerDetected) {
+                                console.log('Marcador perdido');
+                                markerDetected = false;
+                                videoOverlay.style.display = 'none';
+                                videoOverlay.pause();
+                            }
+                        });
+                        
+                        // Configurar video para AR.js
                         arToolkitSource.domElement = videoBg;
-                    }
-                    
-                    loading.style.display = 'none';
-                    animate();
+                        
+                        // Iniciar animación
+                        animate();
+                    });
                 });
-                
-                // También verificar cuando esté listo
-                videoBg.addEventListener('playing', function() {
-                    console.log('Video de cámara está reproduciendo');
-                    videoBg.style.display = 'block';
-                });
-                
-                // Fallback: si después de 2 segundos no se ve, forzar visibilidad
-                setTimeout(() => {
-                    if (videoBg.videoWidth === 0) {
-                        console.log('Video no tiene dimensiones, forzando visibilidad');
-                        videoBg.style.display = 'block';
-                    }
-                }, 2000);
-            })
-            .catch(function(err) {
-                console.error('Error cámara:', err);
-                loading.textContent = 'Error al acceder a la cámara: ' + err.message;
-            });
+            } catch (err) {
+                console.error('Error al inicializar AR.js:', err);
+            }
         }
         
         function animate() {
-            requestAnimationFrame(animate);
+            animationId = requestAnimationFrame(animate);
             
             if (arToolkitSource && arToolkitSource.ready && arToolkitContext) {
                 arToolkitContext.update(arToolkitSource.domElement);
@@ -215,18 +219,27 @@
         }
         
         window.addEventListener('resize', function() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            if (arToolkitSource) {
-                arToolkitSource.onResizeElement();
-                arToolkitSource.copyElementSizeTo(renderer.domElement);
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                if (arToolkitSource) {
+                    arToolkitSource.onResizeElement();
+                    arToolkitSource.copyElementSizeTo(renderer.domElement);
+                }
             }
         });
         
-        window.addEventListener('load', init);
+        // Iniciar cuando se carga la página
+        window.addEventListener('load', function() {
+            getCamera();
+        });
         
+        // Limpiar
         window.addEventListener('beforeunload', function() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
             if (videoBg.srcObject) {
                 videoBg.srcObject.getTracks().forEach(track => track.stop());
             }
