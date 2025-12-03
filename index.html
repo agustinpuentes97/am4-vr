@@ -104,7 +104,8 @@
         vr-mode-ui="enabled: false" 
         xr-mode-ui="enabled: false"
         arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: true;"
-        renderer="antialias: true; alpha: false; colorManagement: false;">
+        renderer="antialias: true; alpha: true; colorManagement: false;"
+        background="color: transparent;">
 
         <!-- Marcador basado en patrón -->
         <a-marker 
@@ -364,16 +365,23 @@
                 }
             }
             
-            // Si AR.js no está disponible, usar solución alternativa inmediatamente
-            if (typeof ARjs === 'undefined' && !scene.systems.arjs && !scene.systems['arjs']) {
-                console.log('AR.js no está disponible, usando solución alternativa');
-                tryCreateCameraVideo();
+            // Verificar inmediatamente si AR.js está disponible
+            const hasARjs = typeof ARjs !== 'undefined' || 
+                           (scene.systems && (scene.systems.arjs || scene.systems['arjs']));
+            
+            if (!hasARjs) {
+                console.log('AR.js NO está disponible, usando solución alternativa INMEDIATAMENTE');
+                updateDebug('AR.js no disponible - usando cámara directa');
+                // Ejecutar inmediatamente
+                setTimeout(() => {
+                    tryCreateCameraVideo();
+                }, 500);
                 return;
             }
             
-            // Intentar múltiples veces encontrar AR.js
+            // Si AR.js está disponible, intentar encontrarlo
             let attempts = 0;
-            const maxAttempts = 10;
+            const maxAttempts = 5;
             const checkInterval = setInterval(() => {
                 attempts++;
                 console.log(`Intento ${attempts} de encontrar AR.js`);
@@ -383,8 +391,6 @@
                     if (attempts >= maxAttempts && !cameraReady) {
                         console.log('No se pudo encontrar AR.js después de múltiples intentos');
                         console.log('Intentando solución alternativa...');
-                        
-                        // Intentar crear el video manualmente
                         tryCreateCameraVideo();
                     }
                 }
@@ -393,60 +399,92 @@
         
         // Función para intentar crear el video de la cámara manualmente
         function tryCreateCameraVideo() {
-            console.log('Intentando crear video de cámara manualmente');
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    } 
-                })
-                .then(function(stream) {
-                    console.log('Stream de cámara obtenido manualmente');
-                    updateDebug('Cámara obtenida manualmente');
-                    
-                    // Crear un video element como fondo
-                    const cameraVideo = document.createElement('video');
-                    cameraVideo.id = 'camera-video';
-                    cameraVideo.srcObject = stream;
-                    cameraVideo.autoplay = true;
-                    cameraVideo.playsinline = true;
-                    cameraVideo.muted = true;
-                    cameraVideo.style.position = 'fixed';
-                    cameraVideo.style.top = '0';
-                    cameraVideo.style.left = '0';
-                    cameraVideo.style.width = '100%';
-                    cameraVideo.style.height = '100%';
-                    cameraVideo.style.zIndex = '1';
-                    cameraVideo.style.objectFit = 'cover';
-                    document.body.appendChild(cameraVideo);
-                    
-                    cameraVideo.addEventListener('loadedmetadata', function() {
-                        console.log('Video de cámara tiene dimensiones:', cameraVideo.videoWidth, cameraVideo.videoHeight);
-                        updateDebug(`Cámara: ${cameraVideo.videoWidth}x${cameraVideo.videoHeight}`);
-                        cameraReady = true;
-                        hideLoading();
-                    });
-                    
-                    cameraVideo.addEventListener('playing', function() {
-                        console.log('Video de cámara está reproduciendo');
-                        cameraReady = true;
-                        hideLoading();
-                    });
-                    
-                    // Forzar play
-                    cameraVideo.play().catch(err => {
-                        console.error('Error al reproducir video de cámara:', err);
-                    });
-                })
-                .catch(function(err) {
-                    console.error('Error al obtener cámara manualmente:', err);
-                    showError('No se pudo acceder a la cámara. Error: ' + err.message);
-                });
-            } else {
-                showError('Tu navegador no soporta acceso a la cámara.');
+            console.log('=== Intentando crear video de cámara manualmente ===');
+            
+            // Verificar si ya existe
+            if (document.getElementById('camera-video')) {
+                console.log('Video de cámara ya existe');
+                return;
             }
+            
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                console.error('getUserMedia no disponible');
+                showError('Tu navegador no soporta acceso a la cámara.');
+                return;
+            }
+            
+            console.log('Solicitando acceso a la cámara...');
+            updateDebug('Solicitando cámara...');
+            
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            })
+            .then(function(stream) {
+                console.log('✓ Stream de cámara obtenido manualmente');
+                updateDebug('Cámara obtenida!');
+                
+                // Crear un video element como fondo
+                const cameraVideo = document.createElement('video');
+                cameraVideo.id = 'camera-video';
+                cameraVideo.srcObject = stream;
+                cameraVideo.autoplay = true;
+                cameraVideo.playsinline = true;
+                cameraVideo.muted = true;
+                cameraVideo.setAttribute('playsinline', '');
+                cameraVideo.setAttribute('webkit-playsinline', '');
+                cameraVideo.style.position = 'fixed';
+                cameraVideo.style.top = '0';
+                cameraVideo.style.left = '0';
+                cameraVideo.style.width = '100vw';
+                cameraVideo.style.height = '100vh';
+                cameraVideo.style.zIndex = '1';
+                cameraVideo.style.objectFit = 'cover';
+                cameraVideo.style.backgroundColor = '#000';
+                document.body.insertBefore(cameraVideo, document.body.firstChild);
+                
+                console.log('Video element creado y agregado al DOM');
+                
+                cameraVideo.addEventListener('loadedmetadata', function() {
+                    console.log('✓ Video de cámara tiene dimensiones:', cameraVideo.videoWidth, 'x', cameraVideo.videoHeight);
+                    updateDebug(`Cámara: ${cameraVideo.videoWidth}x${cameraVideo.videoHeight}`);
+                    cameraReady = true;
+                    hideLoading();
+                });
+                
+                cameraVideo.addEventListener('playing', function() {
+                    console.log('✓ Video de cámara está reproduciendo');
+                    updateDebug('Cámara reproduciendo');
+                    cameraReady = true;
+                    hideLoading();
+                });
+                
+                cameraVideo.addEventListener('error', function(e) {
+                    console.error('Error en video de cámara:', e);
+                    updateDebug('Error en video');
+                });
+                
+                // Forzar play
+                const playPromise = cameraVideo.play();
+                if (playPromise !== undefined) {
+                    playPromise
+                        .then(() => {
+                            console.log('✓ Video de cámara iniciado');
+                        })
+                        .catch(err => {
+                            console.error('Error al reproducir video de cámara:', err);
+                            updateDebug('Error al reproducir');
+                        });
+                }
+            })
+            .catch(function(err) {
+                console.error('✗ Error al obtener cámara manualmente:', err);
+                updateDebug('Error: ' + err.name);
+                showError('No se pudo acceder a la cámara. Error: ' + err.name + ' - ' + err.message);
+            });
         }
 
         // Fallback final: después de que se concedan permisos y pase tiempo, marcar como listo
