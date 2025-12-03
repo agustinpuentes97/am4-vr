@@ -73,9 +73,22 @@
     <video id="videoElement" autoplay playsinline webkit-playsinline muted></video>
     <canvas id="canvas"></canvas>
 
-    <script src="https://cdn.jsdelivr.net/npm/three@0.138.3/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.2/js/artoolkit.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.2/js/artoolkit.three.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@1.7.2/js/artoolkit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@1.7.2/js/artoolkit.three.js"></script>
+    <script>
+        // Verificar que THREEx se cargue correctamente
+        window.addEventListener('load', () => {
+            console.log('THREE:', typeof THREE);
+            console.log('THREEx:', typeof THREEx);
+            if (typeof THREEx !== 'undefined') {
+                console.log('✅ THREEx cargado correctamente');
+                window.THREExReady = true;
+            } else {
+                console.error('❌ THREEx no está disponible');
+            }
+        });
+    </script>
 
     <script>
         const statusEl = document.getElementById('status');
@@ -121,10 +134,25 @@
                 // Esperar a que el video esté listo
                 video.addEventListener('loadedmetadata', () => {
                     console.log('Video metadata cargado:', video.videoWidth, video.videoHeight);
-                    // Esperar un poco más para asegurar que el video esté listo
-                    setTimeout(() => {
-                        initAR();
-                    }, 500);
+                    // Esperar a que THREEx esté disponible
+                    let attempts = 0;
+                    const maxAttempts = 50; // 5 segundos
+                    const checkTHREEx = setInterval(() => {
+                        attempts++;
+                        if (typeof THREEx !== 'undefined' && typeof THREEx.ArToolkitSource !== 'undefined') {
+                            clearInterval(checkTHREEx);
+                            console.log('✅ THREEx disponible, iniciando AR...');
+                            setTimeout(() => initAR(), 100);
+                        } else if (attempts >= maxAttempts) {
+                            clearInterval(checkTHREEx);
+                            statusEl.textContent = 'Error: No se pueden cargar las librerías AR';
+                            console.error('❌ THREEx no disponible después de 5 segundos');
+                            console.log('THREE:', typeof THREE);
+                            console.log('THREEx:', typeof THREEx);
+                        } else {
+                            console.log(`Esperando THREEx... (${attempts}/${maxAttempts})`);
+                        }
+                    }, 100);
                 }, { once: true });
                 
             } catch (err) {
