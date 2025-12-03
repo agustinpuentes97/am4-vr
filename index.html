@@ -48,6 +48,8 @@
             object-fit: cover;
             z-index: 0;
             background: #000;
+            display: block !important;
+            visibility: visible !important;
         }
         #canvas {
             position: absolute;
@@ -56,6 +58,7 @@
             width: 100%;
             height: 100%;
             z-index: 1;
+            pointer-events: none; /* Permitir que el video sea clickeable si es necesario */
         }
     </style>
 </head>
@@ -67,7 +70,7 @@
         <p id="status">Inicializando...</p>
     </div>
 
-    <video id="videoElement" autoplay playsinline></video>
+    <video id="videoElement" autoplay playsinline webkit-playsinline muted></video>
     <canvas id="canvas"></canvas>
 
     <script src="https://cdn.jsdelivr.net/npm/three@0.138.3/build/three.min.js"></script>
@@ -90,20 +93,29 @@
                 
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: {
+                        facingMode: 'environment', // Cámara trasera
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
                     } 
                 });
                 
                 video.srcObject = stream;
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
                 
-                // Asegurar que el video se reproduzca
+                // Asegurar que el video se reproduzca y sea visible
                 video.play().then(() => {
                     console.log('Video reproduciéndose');
+                    console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+                    console.log('Video visible:', video.offsetWidth, 'x', video.offsetHeight);
                     statusEl.textContent = 'Cámara activa. Configurando AR...';
+                    
+                    // Forzar que el video sea visible
+                    video.style.display = 'block';
+                    video.style.visibility = 'visible';
                 }).catch(err => {
                     console.error('Error al reproducir video:', err);
-                    statusEl.textContent = 'Error al reproducir video';
+                    statusEl.textContent = 'Error al reproducir video: ' + err.message;
                 });
                 
                 // Esperar a que el video esté listo
@@ -132,11 +144,15 @@
             renderer = new THREE.WebGLRenderer({
                 canvas: canvas,
                 alpha: true,
-                antialias: true
+                antialias: true,
+                preserveDrawingBuffer: false
             });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setClearColor(0x000000, 0);
+            
+            // Asegurar que el canvas sea transparente para ver el video detrás
+            console.log('Renderer configurado, canvas size:', window.innerWidth, window.innerHeight);
 
             // Configurar AR.js Source
             arToolkitSource = new THREEx.ArToolkitSource({
