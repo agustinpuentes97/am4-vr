@@ -74,21 +74,8 @@
     <canvas id="canvas"></canvas>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@1.7.2/js/artoolkit.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@1.7.2/js/artoolkit.three.js"></script>
-    <script>
-        // Verificar que THREEx se cargue correctamente
-        window.addEventListener('load', () => {
-            console.log('THREE:', typeof THREE);
-            console.log('THREEx:', typeof THREEx);
-            if (typeof THREEx !== 'undefined') {
-                console.log('✅ THREEx cargado correctamente');
-                window.THREExReady = true;
-            } else {
-                console.error('❌ THREEx no está disponible');
-            }
-        });
-    </script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/js/artoolkit.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/js/artoolkit.three.js"></script>
 
     <script>
         const statusEl = document.getElementById('status');
@@ -166,20 +153,31 @@
             console.log('Inicializando AR...');
             
             // Verificar que THREEx esté disponible
-            if (typeof THREEx === 'undefined') {
+            if (typeof THREEx === 'undefined' || typeof THREEx.ArToolkitSource === 'undefined') {
                 console.error('THREEx no está disponible. Esperando...');
-                statusEl.textContent = 'Error: Librerías AR no cargadas';
-                setTimeout(() => {
-                    if (typeof THREEx !== 'undefined') {
+                statusEl.textContent = 'Error: Librerías AR no cargadas. Recargando...';
+                
+                // Intentar esperar un poco más
+                let retries = 0;
+                const maxRetries = 10;
+                const retryInterval = setInterval(() => {
+                    retries++;
+                    if (typeof THREEx !== 'undefined' && typeof THREEx.ArToolkitSource !== 'undefined') {
+                        clearInterval(retryInterval);
+                        console.log('✅ THREEx ahora disponible!');
                         initAR();
-                    } else {
-                        statusEl.textContent = 'Error: No se pueden cargar las librerías AR';
+                    } else if (retries >= maxRetries) {
+                        clearInterval(retryInterval);
+                        statusEl.textContent = 'Error: No se pueden cargar las librerías AR. Recarga la página.';
+                        console.error('THREE:', typeof THREE);
+                        console.error('THREEx:', typeof THREEx);
                     }
-                }, 1000);
+                }, 500);
                 return;
             }
             
-            console.log('THREEx disponible:', typeof THREEx !== 'undefined');
+            console.log('✅ THREEx disponible:', typeof THREEx !== 'undefined');
+            console.log('✅ ArToolkitSource disponible:', typeof THREEx.ArToolkitSource !== 'undefined');
             
             // Configurar Three.js
             scene = new THREE.Scene();
