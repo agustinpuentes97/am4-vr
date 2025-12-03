@@ -126,16 +126,15 @@
             smoothCount="10"
             smoothTolerance="0.01"
             smoothThreshold="5">
-            <a-video 
-                src="#video" 
+            <a-plane 
+                id="video-plane"
                 width="1.5" 
                 height="1" 
                 position="0 0.5 0" 
                 rotation="-90 0 0"
-                material="transparent: false; side: double"
-                visible="true"
-                geometry="primitive: plane">
-            </a-video>
+                material="shader: flat; src: #video; transparent: false"
+                visible="true">
+            </a-plane>
         </a-marker>
 
         <a-entity camera look-controls="enabled: false"></a-entity>
@@ -227,18 +226,39 @@
             
             // Hacer el video entity visible inmediatamente para testing
             setTimeout(() => {
-                const testVideoEntity = marker.querySelector('a-video');
+                const testVideoEntity = marker.querySelector('#video-plane') || marker.querySelector('a-video') || marker.querySelector('a-plane');
+                console.log('Buscando video entity para testing:', testVideoEntity);
+                
                 if (testVideoEntity) {
                     console.log('Haciendo video visible para testing');
                     testVideoEntity.setAttribute('visible', 'true');
+                    testVideoEntity.setAttribute('material', 'shader: flat; src: #video; transparent: false');
                     testVideoEntity.setAttribute('position', '0 0.5 0');
+                    
                     // Reproducir el video para verificar que funciona
                     video.play().then(() => {
-                        console.log('Video de prueba reproduciendo');
+                        console.log('✓ Video de prueba reproduciendo');
                         updateDebug('Video de prueba ON');
+                        
+                        // Verificar que el video esté vinculado
+                        const material = testVideoEntity.getAttribute('material');
+                        console.log('Material del video entity:', material);
                     }).catch(err => {
                         console.error('Error en video de prueba:', err);
                     });
+                } else {
+                    console.error('No se encontró video entity para testing');
+                    // Intentar crear uno manualmente
+                    const plane = document.createElement('a-plane');
+                    plane.setAttribute('id', 'test-video-plane');
+                    plane.setAttribute('width', '1.5');
+                    plane.setAttribute('height', '1');
+                    plane.setAttribute('position', '0 1.5 -2');
+                    plane.setAttribute('material', 'shader: flat; src: #video');
+                    plane.setAttribute('visible', 'true');
+                    scene.appendChild(plane);
+                    console.log('Video plane de prueba creado manualmente');
+                    video.play().catch(err => console.error('Error:', err));
                 }
             }, 2000);
         });
@@ -263,13 +283,15 @@
         
         // Esperar a que el marcador esté cargado para obtener el video entity
         marker.addEventListener('loaded', function() {
-            videoEntity = marker.querySelector('a-video');
+            videoEntity = marker.querySelector('#video-plane') || marker.querySelector('a-video') || marker.querySelector('a-plane');
             console.log('Video entity encontrado:', videoEntity);
             if (videoEntity) {
                 // Asegurar que el video esté visible desde el inicio
                 videoEntity.setAttribute('visible', 'true');
-                videoEntity.setAttribute('material', 'transparent: false');
+                videoEntity.setAttribute('material', 'shader: flat; src: #video; transparent: false');
                 console.log('Video entity configurado');
+            } else {
+                console.error('No se encontró ningún elemento de video en el marcador');
             }
         });
         
@@ -279,14 +301,15 @@
             
             // Asegurar que el video esté visible
             if (!videoEntity) {
-                videoEntity = marker.querySelector('a-video');
+                videoEntity = marker.querySelector('#video-plane') || marker.querySelector('a-video') || marker.querySelector('a-plane');
             }
             
             if (videoEntity) {
                 videoEntity.setAttribute('visible', 'true');
-                videoEntity.setAttribute('material', 'transparent: false');
+                videoEntity.setAttribute('material', 'shader: flat; src: #video; transparent: false');
                 console.log('Video entity visible:', videoEntity.getAttribute('visible'));
                 console.log('Video entity position:', videoEntity.getAttribute('position'));
+                console.log('Video entity material:', videoEntity.getAttribute('material'));
             } else {
                 console.error('Video entity no encontrado!');
             }
@@ -348,11 +371,12 @@
                     updateDebug('Marcador detectado!');
                     
                     if (!videoEntity) {
-                        videoEntity = marker.querySelector('a-video');
+                        videoEntity = marker.querySelector('#video-plane') || marker.querySelector('a-video') || marker.querySelector('a-plane');
                     }
                     
                     if (videoEntity) {
                         videoEntity.setAttribute('visible', 'true');
+                        videoEntity.setAttribute('material', 'shader: flat; src: #video; transparent: false');
                         video.play().catch(err => console.error('Error:', err));
                     }
                 }
