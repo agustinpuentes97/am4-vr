@@ -120,13 +120,16 @@
             type="pattern" 
             url="assets/marker1.patt"
             emitevents="true"
-            size="1">
+            size="1"
+            preset="hiro">
             <a-video 
                 src="#video" 
-                width="1" 
-                height="0.6" 
-                position="0 0.3 0" 
-                rotation="-90 0 0">
+                width="1.5" 
+                height="1" 
+                position="0 0.5 0" 
+                rotation="-90 0 0"
+                material="transparent: false"
+                visible="true">
             </a-video>
         </a-marker>
 
@@ -136,6 +139,7 @@
         <video 
             id="video" 
             src="assets/video1.mp4" 
+            preload="auto"
             autoplay 
             loop 
             playsinline 
@@ -207,12 +211,23 @@
 
         // Manejo del video
         video.addEventListener('loadeddata', function() {
-            console.log('Video cargado correctamente');
+            console.log('✓ Video cargado correctamente');
+            console.log('Video duración:', video.duration, 'segundos');
+            console.log('Video dimensiones:', video.videoWidth, 'x', video.videoHeight);
             videoReady = true;
             hideLoading();
-            video.play().catch(err => {
-                console.error('Error al reproducir video:', err);
-            });
+            
+            // Pre-cargar el video pero no reproducirlo hasta que se detecte el marcador
+            video.load();
+        });
+        
+        video.addEventListener('canplay', function() {
+            console.log('✓ Video listo para reproducir');
+        });
+        
+        video.addEventListener('playing', function() {
+            console.log('✓ Video está reproduciendo');
+            updateDebug('Video ON');
         });
 
         video.addEventListener('error', function(e) {
@@ -222,20 +237,53 @@
 
         // Eventos del marcador
         const marker = document.querySelector('a-marker');
+        const videoEntity = marker.querySelector('a-video');
         
         marker.addEventListener('markerFound', function() {
-            console.log('Marcador detectado');
-            video.play().catch(err => console.error('Error al reproducir:', err));
+            console.log('✓ Marcador detectado');
+            updateDebug('Marcador detectado!');
+            
+            // Asegurar que el video esté visible
+            if (videoEntity) {
+                videoEntity.setAttribute('visible', 'true');
+                console.log('Video entity visible:', videoEntity.getAttribute('visible'));
+            }
+            
+            // Reproducir el video
+            video.currentTime = 0;
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+                playPromise
+                    .then(() => {
+                        console.log('✓ Video reproduciendo');
+                        updateDebug('Video reproduciendo');
+                    })
+                    .catch(err => {
+                        console.error('Error al reproducir video:', err);
+                        updateDebug('Error al reproducir');
+                    });
+            }
         });
 
         marker.addEventListener('markerLost', function() {
             console.log('Marcador perdido');
+            updateDebug('Marcador perdido');
+            // Pausar el video cuando se pierde el marcador (opcional)
+            // video.pause();
         });
 
         // Verificar si el marcador se carga correctamente
         marker.addEventListener('loaded', function() {
-            console.log('Marcador cargado correctamente');
+            console.log('✓ Marcador cargado correctamente');
+            updateDebug('Marcador listo');
         });
+        
+        // Verificar el estado del marcador periódicamente
+        setInterval(() => {
+            if (marker.object3D && marker.object3D.visible) {
+                console.log('Marcador visible en 3D');
+            }
+        }, 2000);
 
         marker.addEventListener('error', function(e) {
             console.error('Error al cargar marcador:', e);
