@@ -56,7 +56,7 @@
         embedded 
         vr-mode-ui="enabled: false" 
         xr-mode-ui="enabled: false"
-        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: true;"
+        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
         renderer="antialias: true; alpha: false;">
 
         <!-- Marcador basado en patrón -->
@@ -112,47 +112,26 @@
         // Esperar a que AR.js esté listo
         scene.addEventListener('loaded', function() {
             console.log('Escena cargada');
-            
-            // Obtener el sistema AR después de un pequeño delay
+        });
+
+        // Escuchar el evento de AR.js cuando el video de la cámara esté listo
+        scene.addEventListener('arjs-video-loaded', function() {
+            console.log('AR.js: Video de cámara cargado');
+            cameraReady = true;
+            hideLoading();
+        });
+
+        // También intentar detectar cuando AR.js está listo de otra manera
+        scene.addEventListener('renderstart', function() {
+            console.log('Render iniciado');
+            // Dar un poco más de tiempo para que AR.js se inicialice
             setTimeout(() => {
-                arSystem = scene.systems['arjs'];
-                
-                if (arSystem) {
-                    console.log('Sistema AR.js encontrado', arSystem);
-                    
-                    // Escuchar cuando el video de la cámara esté listo
-                    const arToolkit = arSystem.arToolkitContext;
-                    if (arToolkit) {
-                        console.log('AR Toolkit encontrado');
-                        
-                        arToolkit.on('initialized', function() {
-                            console.log('AR.js inicializado');
-                            cameraReady = true;
-                            hideLoading();
-                        });
-                        
-                        // También verificar el video directamente
-                        const arVideo = arSystem.arToolkitSource;
-                        if (arVideo && arVideo.domElement) {
-                            console.log('Video de AR.js encontrado');
-                            arVideo.domElement.addEventListener('loadedmetadata', function() {
-                                console.log('Metadata del video de cámara cargado');
-                                cameraReady = true;
-                                hideLoading();
-                            });
-                        }
-                    } else {
-                        console.warn('AR Toolkit no encontrado');
-                        // Intentar marcar como listo después de un tiempo
-                        setTimeout(() => {
-                            cameraReady = true;
-                            hideLoading();
-                        }, 2000);
-                    }
-                } else {
-                    console.warn('Sistema AR.js no encontrado');
+                if (!cameraReady) {
+                    console.log('Marcando cámara como lista (fallback)');
+                    cameraReady = true;
+                    hideLoading();
                 }
-            }, 500);
+            }, 1500);
         });
 
         // Manejo del video
@@ -203,26 +182,41 @@
             showError('Esta aplicación requiere HTTPS para acceder a la cámara.');
         }
 
-        // Timeout de seguridad
+        // Timeout de seguridad - ocultar loading después de 4 segundos si todo está listo
         setTimeout(() => {
-            if (!cameraReady) {
-                loading.textContent = 'Esperando cámara... Si no aparece, verifica los permisos.';
+            if (videoReady && !cameraReady) {
+                console.log('Timeout: forzando cámara como lista');
+                cameraReady = true;
+                hideLoading();
             }
-        }, 3000);
+        }, 4000);
 
-        // Verificar acceso a la cámara
+        // Verificar acceso a la cámara - pero AR.js lo manejará automáticamente
+        // Solo verificamos que el navegador soporte la API
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showError('Tu navegador no soporta acceso a la cámara.');
+        }
+
+        // Fallback: Si después de 3 segundos de conceder permisos no se detecta, marcar como listo
+        let permissionGranted = false;
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
                 .then(function(stream) {
                     console.log('Acceso a cámara concedido');
-                    // AR.js manejará el stream
+                    permissionGranted = true;
+                    // AR.js manejará el stream, pero si no detecta el evento, usar fallback
+                    setTimeout(() => {
+                        if (!cameraReady && permissionGranted) {
+                            console.log('Usando fallback: marcando cámara como lista');
+                            cameraReady = true;
+                            hideLoading();
+                        }
+                    }, 2500);
                 })
                 .catch(function(err) {
                     console.error('Error al acceder a la cámara:', err);
                     showError('No se pudo acceder a la cámara. Verifica los permisos en la configuración del navegador.');
                 });
-        } else {
-            showError('Tu navegador no soporta acceso a la cámara.');
         }
     </script>
 </body>
