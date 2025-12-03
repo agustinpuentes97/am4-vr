@@ -40,6 +40,7 @@
             width: 100vw;
             height: 100vh;
             z-index: 2;
+            pointer-events: none;
         }
         #video-overlay {
             position: fixed;
@@ -84,10 +85,12 @@
             renderer = new THREE.WebGLRenderer({ 
                 canvas: canvas,
                 alpha: true,
-                antialias: true
+                antialias: true,
+                premultipliedAlpha: false
             });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setClearColor(0x000000, 0); // Transparente
             
             // Inicializar AR.js
             arToolkitSource = new THREEx.ArToolkitSource({
@@ -156,18 +159,48 @@
                 } 
             })
             .then(function(stream) {
+                console.log('Cámara obtenida');
                 videoBg.srcObject = stream;
-                videoBg.play();
+                
+                // Forzar reproducción
+                videoBg.play().then(() => {
+                    console.log('Video de cámara reproduciendo');
+                }).catch(err => {
+                    console.error('Error al reproducir video:', err);
+                });
                 
                 videoBg.addEventListener('loadedmetadata', function() {
-                    arToolkitSource.domElement = videoBg;
+                    console.log('Metadata de cámara cargado:', videoBg.videoWidth, 'x', videoBg.videoHeight);
+                    
+                    // Asegurar que el video sea visible
+                    videoBg.style.display = 'block';
+                    
+                    // Configurar AR.js
+                    if (arToolkitSource) {
+                        arToolkitSource.domElement = videoBg;
+                    }
+                    
                     loading.style.display = 'none';
                     animate();
                 });
+                
+                // También verificar cuando esté listo
+                videoBg.addEventListener('playing', function() {
+                    console.log('Video de cámara está reproduciendo');
+                    videoBg.style.display = 'block';
+                });
+                
+                // Fallback: si después de 2 segundos no se ve, forzar visibilidad
+                setTimeout(() => {
+                    if (videoBg.videoWidth === 0) {
+                        console.log('Video no tiene dimensiones, forzando visibilidad');
+                        videoBg.style.display = 'block';
+                    }
+                }, 2000);
             })
             .catch(function(err) {
                 console.error('Error cámara:', err);
-                loading.textContent = 'Error al acceder a la cámara';
+                loading.textContent = 'Error al acceder a la cámara: ' + err.message;
             });
         }
         
