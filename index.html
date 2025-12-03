@@ -1,366 +1,83 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="data:,">
-    <title>Realidad Aumentada - Marker Detection</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            font-family: Arial, sans-serif;
-            background: #000;
-            width: 100vw;
-            height: 100vh;
-        }
-        #info {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.8);
+        /* Estilo para el botón de inicio (necesario para activar audio/video en iOS) */
+        #start-button {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            background: #333;
             color: white;
-            padding: 15px;
-            border-radius: 8px;
+            border: none;
+            border-radius: 5px;
             z-index: 1000;
-            max-width: 300px;
-        }
-        #info h2 {
-            margin: 0 0 10px 0;
-            font-size: 18px;
-        }
-        #info p {
-            margin: 5px 0;
-            font-size: 14px;
-        }
-        #videoElement {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            z-index: 0;
-            background: #000;
-            display: block !important;
-            visibility: visible !important;
-        }
-        #canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-            pointer-events: none; /* Permitir que el video sea clickeable si es necesario */
+            display: none;
+            /* Se mostrará vía JS */
         }
     </style>
 </head>
+
 <body>
-    <div id="info">
-        <h2>🎯 Realidad Aumentada</h2>
-        <p>📹 Apunta la cámara al marker1</p>
-        <p>▶️ El video se mostrará cuando detecte el marcador</p>
-        <p id="status">Inicializando...</p>
-    </div>
 
-    <video id="videoElement" autoplay playsinline webkit-playsinline muted></video>
-    <canvas id="canvas"></canvas>
+    <button id="start-button">Iniciar AR</button>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@1.7.2/js/artoolkit.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@1.7.2/js/artoolkit.three.js"></script>
-    <script>
-        // Verificar carga después de un delay
-        setTimeout(function() {
-            console.log('=== Verificación de librerías (después de 2 segundos) ===');
-            console.log('THREE:', typeof THREE !== 'undefined' ? '✅' : '❌');
-            console.log('ARToolkit:', typeof ARToolkit !== 'undefined' ? '✅' : '❌');
-            console.log('THREEx:', typeof THREEx !== 'undefined' ? '✅' : '❌');
-            
-            if (typeof THREEx === 'undefined') {
-                console.error('THREEx no está disponible. Intentando cargar manualmente...');
-                // Intentar cargar desde otra fuente
-                const script = document.createElement('script');
-                script.src = 'https://raw.githack.com/AR-js-org/AR.js/master/js/artoolkit.three.js';
-                script.onload = function() {
-                    console.log('THREEx después de recarga:', typeof THREEx);
-                };
-                document.head.appendChild(script);
-            } else {
-                console.log('✅ THREEx está disponible!');
-                window.THREExReady = true;
-            }
-        }, 2000);
-    </script>
+    <a-scene mindar-image="imageTargetSrc: ./targets.mind;" color-space="sRGB"
+        renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false">
+
+        <a-assets>
+            <video id="mivideo" src="./video.mp4" preload="auto" loop="true" playsinline webkit-playsinline
+                crossorigin="anonymous"></video>
+        </a-assets>
+
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+        <a-entity mindar-image-target="targetIndex: 0">
+            <a-video src="#mivideo" position="0 0 0" height="0.552" width="1" rotation="0 0 0"></a-video>
+        </a-entity>
+
+    </a-scene>
 
     <script>
-        const statusEl = document.getElementById('status');
-        const video = document.getElementById('videoElement');
-        const canvas = document.getElementById('canvas');
-        
-        let arToolkitSource, arToolkitContext, arMarkerControls;
-        let scene, camera, renderer;
-        let videoMesh, overlayVideo;
+        // Lógica para detectar cuando el target es encontrado y reproducir video
+        const sceneEl = document.querySelector('a-scene');
+        const videoEl = document.querySelector('#mivideo');
+        const startBtn = document.querySelector('#start-button');
+        const exampleTarget = document.querySelector('[mindar-image-target]');
 
-        // Paso 1: Inicializar cámara
-        async function initCamera() {
-            try {
-                statusEl.textContent = 'Solicitando acceso a la cámara...';
-                
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: {
-                        facingMode: 'environment', // Cámara trasera
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    } 
-                });
-                
-                video.srcObject = stream;
-                video.setAttribute('playsinline', '');
-                video.setAttribute('webkit-playsinline', '');
-                
-                // Asegurar que el video se reproduzca y sea visible
-                video.play().then(() => {
-                    console.log('Video reproduciéndose');
-                    console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
-                    console.log('Video visible:', video.offsetWidth, 'x', video.offsetHeight);
-                    statusEl.textContent = 'Cámara activa. Configurando AR...';
-                    
-                    // Forzar que el video sea visible
-                    video.style.display = 'block';
-                    video.style.visibility = 'visible';
-                }).catch(err => {
-                    console.error('Error al reproducir video:', err);
-                    statusEl.textContent = 'Error al reproducir video: ' + err.message;
-                });
-                
-                // Esperar a que el video esté listo
-                video.addEventListener('loadedmetadata', () => {
-                    console.log('Video metadata cargado:', video.videoWidth, video.videoHeight);
-                    // Esperar a que THREEx esté disponible
-                    let attempts = 0;
-                    const maxAttempts = 50; // 5 segundos
-                    const checkTHREEx = setInterval(() => {
-                        attempts++;
-                        if (typeof THREEx !== 'undefined' && typeof THREEx.ArToolkitSource !== 'undefined') {
-                            clearInterval(checkTHREEx);
-                            console.log('✅ THREEx disponible, iniciando AR...');
-                            setTimeout(() => initAR(), 100);
-                        } else if (attempts >= maxAttempts) {
-                            clearInterval(checkTHREEx);
-                            statusEl.textContent = 'Error: No se pueden cargar las librerías AR';
-                            console.error('❌ THREEx no disponible después de 5 segundos');
-                            console.log('THREE:', typeof THREE);
-                            console.log('THREEx:', typeof THREEx);
-                        } else {
-                            console.log(`Esperando THREEx... (${attempts}/${maxAttempts})`);
-                        }
-                    }, 100);
-                }, { once: true });
-                
-            } catch (err) {
-                statusEl.textContent = 'Error: ' + err.message;
-                console.error('Error al acceder a la cámara:', err);
-            }
-        }
-
-        // Paso 2: Inicializar AR
-        function initAR() {
-            console.log('Inicializando AR...');
-            
-            // Verificar que THREEx esté disponible - intentar múltiples formas
-            let THREExObj = window.THREEx || THREEx;
-            
-            if (typeof THREExObj === 'undefined' || typeof THREExObj.ArToolkitSource === 'undefined') {
-                console.error('THREEx no está disponible. Verificando alternativas...');
-                console.log('window.THREEx:', typeof window.THREEx);
-                console.log('THREEx:', typeof THREEx);
-                console.log('window:', Object.keys(window).filter(k => k.includes('THREE')));
-                
-                statusEl.textContent = 'Error: Librerías AR no cargadas. Intentando recargar...';
-                
-                // Intentar esperar un poco más
-                let retries = 0;
-                const maxRetries = 20; // Aumentar a 10 segundos
-                const retryInterval = setInterval(() => {
-                    retries++;
-                    THREExObj = window.THREEx || THREEx;
-                    if (typeof THREExObj !== 'undefined' && typeof THREExObj.ArToolkitSource !== 'undefined') {
-                        clearInterval(retryInterval);
-                        console.log('✅ THREEx ahora disponible!');
-                        window.THREEx = THREExObj; // Asegurar que esté en window
-                        initAR();
-                    } else if (retries >= maxRetries) {
-                        clearInterval(retryInterval);
-                        statusEl.textContent = 'Error: No se pueden cargar las librerías AR. Usa A-Frame o recarga la página.';
-                        console.error('THREE:', typeof THREE);
-                        console.error('THREEx:', typeof THREEx);
-                        console.error('window.THREEx:', typeof window.THREEx);
-                        alert('Error: Las librerías AR no se cargaron correctamente. Por favor, recarga la página o verifica tu conexión a internet.');
-                    }
-                }, 500);
-                return;
-            }
-            
-            // Usar THREExObj para asegurar que funcione
-            window.THREEx = THREExObj;
-            
-            console.log('✅ THREEx disponible:', typeof window.THREEx !== 'undefined');
-            console.log('✅ ArToolkitSource disponible:', typeof window.THREEx.ArToolkitSource !== 'undefined');
-            
-            // Configurar Three.js
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            
-            renderer = new THREE.WebGLRenderer({
-                canvas: canvas,
-                alpha: true,
-                antialias: true,
-                preserveDrawingBuffer: false
-            });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setClearColor(0x000000, 0);
-            
-            // Asegurar que el canvas sea transparente para ver el video detrás
-            console.log('Renderer configurado, canvas size:', window.innerWidth, window.innerHeight);
-
-            // Configurar AR.js Source - usar window.THREEx
-            arToolkitSource = new window.THREEx.ArToolkitSource({
-                sourceType: 'webcam',
-                sourceWidth: video.videoWidth,
-                sourceHeight: video.videoHeight,
-                displayWidth: window.innerWidth,
-                displayHeight: window.innerHeight
-            });
-
-            // Conectar el video
-            arToolkitSource.domElement = video;
-
-            // Inicializar source
-            arToolkitSource.init(() => {
-                console.log('AR Source inicializado');
-                
-                // Configurar AR.js Context
-                arToolkitContext = new window.THREEx.ArToolkitContext({
-                    cameraParametersUrl: 'https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/data/camera_para.dat',
-                    detectionMode: 'mono',
-                    canvasWidth: video.videoWidth,
-                    canvasHeight: video.videoHeight
-                });
-
-                // Inicializar context
-                arToolkitContext.init(() => {
-                    console.log('AR Context inicializado');
-                    camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
-                    
-                    // Crear marcador
-                    createMarker();
-                });
-            });
-        }
-
-        // Paso 3: Crear marcador y video
-        function createMarker() {
-            console.log('Creando marcador...');
-            
-            // Crear marcador
-            arMarkerControls = new window.THREEx.ArMarkerControls(arToolkitContext, camera, {
-                type: 'pattern',
-                patternUrl: 'assets/marker1.patt',
-                changeMatrixMode: 'cameraTransformMatrix'
-            });
-
-            // Crear elemento de video para el overlay
-            overlayVideo = document.createElement('video');
-            overlayVideo.src = 'assets/video1.mp4';
-            overlayVideo.loop = true;
-            overlayVideo.playsInline = true;
-            overlayVideo.style.display = 'none';
-            document.body.appendChild(overlayVideo);
-
-            // Crear textura de video
-            const videoTexture = new THREE.VideoTexture(overlayVideo);
-            videoTexture.minFilter = THREE.LinearFilter;
-            videoTexture.magFilter = THREE.LinearFilter;
-
-            // Crear mesh con el video
-            const geometry = new THREE.PlaneGeometry(1.6, 1);
-            const material = new THREE.MeshBasicMaterial({
-                map: videoTexture,
-                side: THREE.DoubleSide,
-                transparent: true
-            });
-            
-            videoMesh = new THREE.Mesh(geometry, material);
-            videoMesh.rotation.x = -Math.PI / 2;
-            videoMesh.position.y = 0.5;
-            videoMesh.visible = false;
-            scene.add(videoMesh);
-
-            statusEl.textContent = 'Listo! Buscando marcador...';
-            
-            // Iniciar loop de animación
-            animate();
-        }
-
-        // Paso 4: Loop de animación
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (arToolkitSource && arToolkitSource.ready !== false && arToolkitContext) {
-                // Actualizar AR
-                arToolkitContext.update(arToolkitSource.domElement);
-                
-                // Verificar marcador
-                if (arMarkerControls && arMarkerControls.object3d) {
-                    const isVisible = arMarkerControls.object3d.visible;
-                    
-                    if (isVisible) {
-                        if (!videoMesh.visible) {
-                            videoMesh.visible = true;
-                            statusEl.textContent = '✅ Marcador detectado!';
-                            overlayVideo.play().catch(e => console.error('Error al reproducir:', e));
-                        }
-                    } else {
-                        if (videoMesh.visible) {
-                            videoMesh.visible = false;
-                            statusEl.textContent = 'Buscando marcador...';
-                            overlayVideo.pause();
-                        }
-                    }
-                }
-            }
-
-            // Renderizar
-            renderer.render(scene, camera);
-        }
-
-        // Manejar resize
-        window.addEventListener('resize', () => {
-            if (arToolkitSource) {
-                arToolkitSource.onResizeElement();
-                arToolkitSource.onResize();
-            }
-            if (camera && renderer) {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            }
+        // Esperar a que la escena cargue
+        sceneEl.addEventListener("loaded", () => {
+            startBtn.style.display = "block"; // Mostrar botón
         });
 
-        // Iniciar cuando la página cargue
-        window.addEventListener('load', () => {
-            console.log('Página cargada, iniciando cámara...');
-            initCamera();
+        // Al hacer click, iniciamos MindAR y preparamos el video
+        startBtn.addEventListener("click", () => {
+            sceneEl.systems["mindar-image-system"].start(); // Iniciar cámara
+            startBtn.style.display = "none";
+            videoEl.play(); // "Calentar" el video
+            videoEl.pause(); // Pausar inmediatamente
+        });
+
+        // Cuando la cámara detecta la imagen
+        exampleTarget.addEventListener("targetFound", event => {
+            console.log("Imagen encontrada");
+            videoEl.play();
+        });
+
+        // Cuando la cámara pierde la imagen
+        exampleTarget.addEventListener("targetLost", event => {
+            console.log("Imagen perdida");
+            videoEl.pause();
         });
     </script>
 </body>
+
 </html>
