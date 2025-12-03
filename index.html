@@ -3,10 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>AR Video Marker</title>
-    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/aframe/build/aframe-ar.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar-threex.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -19,26 +18,13 @@
             left: 50%;
             transform: translate(-50%, -50%);
             color: white;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.8);
             padding: 20px;
             border-radius: 10px;
             z-index: 1000;
             text-align: center;
         }
-        a-scene {
-            width: 100vw;
-            height: 100vh;
-            display: block;
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: 2;
-            background: transparent !important;
-        }
-        canvas.a-canvas {
-            background: transparent !important;
-        }
-        #camera-video {
+        #video-background {
             position: fixed;
             top: 0;
             left: 0;
@@ -47,158 +33,171 @@
             object-fit: cover;
             z-index: 1;
         }
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 2;
+        }
+        #video-overlay {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80vw;
+            max-width: 600px;
+            height: auto;
+            z-index: 3;
+            display: none;
+            border: 2px solid white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
     </style>
 </head>
 <body>
     <div id="loading">Cargando cámara...</div>
+    <video id="video-background" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <video id="video-overlay" src="assets/video1.mp4" loop playsinline muted></video>
     
-    <a-scene 
-        embedded 
-        vr-mode-ui="enabled: false" 
-        xr-mode-ui="enabled: false"
-        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
-        renderer="antialias: true; alpha: true; clearColor: 0x00000000;"
-        background="color: transparent; transparent: true;">
-
-        <a-marker 
-            type="pattern" 
-            url="assets/marker1.patt"
-            emitevents="true"
-            size="1">
-            <a-plane 
-                id="video-plane"
-                width="1.5" 
-                height="1" 
-                position="0 0.5 0" 
-                rotation="-90 0 0"
-                material="shader: flat; src: #video"
-                visible="false">
-            </a-plane>
-        </a-marker>
-
-        <a-entity camera look-controls="enabled: false"></a-entity>
-
-        <video 
-            id="video" 
-            src="assets/video1.mp4" 
-            preload="metadata"
-            loop 
-            playsinline 
-            muted
-            style="display:none">
-        </video>
-    </a-scene>
-
     <script>
-        const scene = document.querySelector('a-scene');
         const loading = document.getElementById('loading');
-        const video = document.getElementById('video');
-        const marker = document.querySelector('a-marker');
-        const videoPlane = marker.querySelector('#video-plane');
+        const videoBg = document.getElementById('video-background');
+        const videoOverlay = document.getElementById('video-overlay');
+        const canvas = document.getElementById('canvas');
         
-        let cameraVideo = null;
-        let videoLoaded = false;
-        let cameraReady = false;
+        let arToolkitSource, arToolkitContext;
+        let scene, camera, renderer;
+        let markerRoot, markerControls;
+        let markerDetected = false;
 
-        // Ocultar loading cuando todo esté listo
-        function hideLoading() {
-            if (cameraReady && videoLoaded) {
-                setTimeout(() => {
-                    loading.style.display = 'none';
-                }, 500);
-            }
-        }
-
-        // Manejo del video
-        video.addEventListener('loadedmetadata', function() {
-            console.log('Video cargado');
-            videoLoaded = true;
-            hideLoading();
-        });
-
-        video.addEventListener('error', function(e) {
-            console.error('Error en video:', e);
-            loading.textContent = 'Error al cargar el video';
-        });
-
-        // Eventos del marcador - solo cuando se detecta
-        marker.addEventListener('markerFound', function() {
-            console.log('Marcador detectado');
+        function init() {
+            // Configurar canvas
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
             
-            if (videoPlane) {
-                videoPlane.setAttribute('visible', 'true');
-            }
+            // Inicializar Three.js
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 1000);
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: canvas,
+                alpha: true,
+                antialias: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
             
-            // Solo reproducir cuando se detecta el marcador
-            if (video.paused) {
-                video.play().catch(err => console.error('Error:', err));
-            }
-        });
-
-        marker.addEventListener('markerLost', function() {
-            console.log('Marcador perdido');
-            if (videoPlane) {
-                videoPlane.setAttribute('visible', 'false');
-            }
-            // Pausar para ahorrar recursos
-            video.pause();
-        });
-
-        // Configurar cámara de fondo (solo una vez)
-        scene.addEventListener('renderstart', function() {
-            if (!cameraVideo && !document.getElementById('camera-video')) {
-                // Verificar si AR.js tiene el video
-                const arSystem = scene.systems.arjs;
-                if (arSystem && arSystem.arToolkitSource && arSystem.arToolkitSource.domElement) {
-                    const arVideo = arSystem.arToolkitSource.domElement;
-                    arVideo.style.position = 'fixed';
-                    arVideo.style.top = '0';
-                    arVideo.style.left = '0';
-                    arVideo.style.width = '100vw';
-                    arVideo.style.height = '100vh';
-                    arVideo.style.objectFit = 'cover';
-                    arVideo.style.zIndex = '1';
-                    cameraVideo = arVideo;
-                    cameraReady = true;
-                    hideLoading();
-                } else {
-                    // Crear video de cámara manualmente
-                    navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: 'environment' } 
-                    })
-                    .then(function(stream) {
-                        const camVideo = document.createElement('video');
-                        camVideo.id = 'camera-video';
-                        camVideo.srcObject = stream;
-                        camVideo.autoplay = true;
-                        camVideo.playsinline = true;
-                        camVideo.muted = true;
-                        camVideo.style.position = 'fixed';
-                        camVideo.style.top = '0';
-                        camVideo.style.left = '0';
-                        camVideo.style.width = '100vw';
-                        camVideo.style.height = '100vh';
-                        camVideo.style.objectFit = 'cover';
-                        camVideo.style.zIndex = '1';
-                        document.body.insertBefore(camVideo, document.body.firstChild);
-                        cameraVideo = camVideo;
-                        cameraReady = true;
-                        hideLoading();
-                    })
-                    .catch(function(err) {
-                        console.error('Error cámara:', err);
-                        loading.textContent = 'Error al acceder a la cámara';
-                    });
+            // Inicializar AR.js
+            arToolkitSource = new THREEx.ArToolkitSource({
+                sourceType: 'webcam',
+                sourceWidth: 1280,
+                sourceHeight: 720,
+                displayWidth: window.innerWidth,
+                displayHeight: window.innerHeight
+            });
+            
+            arToolkitContext = new THREEx.ArToolkitContext({
+                cameraParametersUrl: 'https://cdn.jsdelivr.net/npm/ar.js@3.3.2/data/data/camera_para.dat',
+                detectionMode: 'mono',
+                maxDetectionRate: 30,
+                canvasWidth: 1280,
+                canvasHeight: 720
+            });
+            
+            // Inicializar fuente
+            arToolkitSource.init(function() {
+                arToolkitSource.onResizeElement();
+                arToolkitSource.copyElementSizeTo(renderer.domElement);
+                
+                // Inicializar contexto
+                arToolkitContext.init(function() {
+                    camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+                });
+            });
+            
+            // Crear grupo para el marcador
+            markerRoot = new THREE.Group();
+            scene.add(markerRoot);
+            
+            // Controles del marcador
+            markerControls = new THREEx.ArMarkerControls(arToolkitContext, markerRoot, {
+                type: 'pattern',
+                patternUrl: 'assets/marker1.patt',
+                changeMatrixMode: 'cameraTransformMatrix'
+            });
+            
+            // Eventos del marcador
+            markerControls.addEventListener('markerFound', function() {
+                if (!markerDetected) {
+                    console.log('✓ Marcador detectado');
+                    markerDetected = true;
+                    videoOverlay.style.display = 'block';
+                    videoOverlay.play().catch(err => console.error('Error:', err));
                 }
+            });
+            
+            markerControls.addEventListener('markerLost', function() {
+                if (markerDetected) {
+                    console.log('Marcador perdido');
+                    markerDetected = false;
+                    videoOverlay.style.display = 'none';
+                    videoOverlay.pause();
+                }
+            });
+            
+            // Obtener acceso a la cámara
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            })
+            .then(function(stream) {
+                videoBg.srcObject = stream;
+                videoBg.play();
+                
+                videoBg.addEventListener('loadedmetadata', function() {
+                    arToolkitSource.domElement = videoBg;
+                    loading.style.display = 'none';
+                    animate();
+                });
+            })
+            .catch(function(err) {
+                console.error('Error cámara:', err);
+                loading.textContent = 'Error al acceder a la cámara';
+            });
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (arToolkitSource && arToolkitSource.ready && arToolkitContext) {
+                arToolkitContext.update(arToolkitSource.domElement);
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (arToolkitSource) {
+                arToolkitSource.onResizeElement();
+                arToolkitSource.copyElementSizeTo(renderer.domElement);
             }
         });
-
-        // Limpiar cuando se cierra
+        
+        window.addEventListener('load', init);
+        
         window.addEventListener('beforeunload', function() {
-            if (cameraVideo && cameraVideo.srcObject) {
-                cameraVideo.srcObject.getTracks().forEach(track => track.stop());
+            if (videoBg.srcObject) {
+                videoBg.srcObject.getTracks().forEach(track => track.stop());
             }
-            video.pause();
+            videoOverlay.pause();
         });
     </script>
 </body>
