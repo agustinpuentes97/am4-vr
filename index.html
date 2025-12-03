@@ -1,41 +1,16 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>AR Video Marker</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/aframe/build/aframe-ar.js" 
-            onerror="console.error('Error al cargar AR.js desde CDN')"
-            onload="console.log('AR.js cargado desde CDN')"></script>
-    <script>
-        // Verificar que AR.js se carga
-        window.addEventListener('load', function() {
-            console.log('AR.js disponible:', typeof ARjs !== 'undefined');
-            console.log('A-Frame disponible:', typeof AFRAME !== 'undefined');
-            
-            // Intentar cargar desde otra fuente si falla
-            if (typeof ARjs === 'undefined' && !AFRAME.systems.arjs) {
-                console.log('AR.js no se cargó, intentando fuente alternativa...');
-                const script = document.createElement('script');
-                script.src = 'https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js';
-                script.onerror = function() {
-                    console.error('Error al cargar AR.js desde fuente alternativa');
-                };
-                script.onload = function() {
-                    console.log('AR.js cargado desde fuente alternativa');
-                };
-                document.head.appendChild(script);
-            }
-        });
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/aframe/build/aframe-ar.js"></script>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            font-family: Arial, sans-serif;
             background: #000;
         }
         #loading {
@@ -50,31 +25,6 @@
             z-index: 1000;
             text-align: center;
         }
-        #error {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            background: rgba(255, 0, 0, 0.8);
-            padding: 20px;
-            border-radius: 10px;
-            z-index: 1000;
-            text-align: center;
-            display: none;
-        }
-        #debug {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            border-radius: 5px;
-            z-index: 1001;
-            font-size: 12px;
-            display: none;
-        }
         a-scene {
             width: 100vw;
             height: 100vh;
@@ -87,7 +37,6 @@
         }
         canvas.a-canvas {
             background: transparent !important;
-            z-index: 2;
         }
         #camera-video {
             position: fixed;
@@ -97,580 +46,160 @@
             height: 100vh;
             object-fit: cover;
             z-index: 1;
-            background: #000;
         }
     </style>
 </head>
-
 <body>
     <div id="loading">Cargando cámara...</div>
-    <div id="error"></div>
-    <div id="debug"></div>
     
     <a-scene 
         embedded 
         vr-mode-ui="enabled: false" 
         xr-mode-ui="enabled: false"
-        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: true;"
-        renderer="antialias: true; alpha: true; colorManagement: false; clearColor: 0x00000000;"
+        arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
+        renderer="antialias: true; alpha: true; clearColor: 0x00000000;"
         background="color: transparent; transparent: true;">
 
-        <!-- Marcador basado en patrón -->
         <a-marker 
             type="pattern" 
             url="assets/marker1.patt"
             emitevents="true"
-            size="1"
-            preset="hiro"
-            smooth="true"
-            smoothCount="10"
-            smoothTolerance="0.01"
-            smoothThreshold="5">
+            size="1">
             <a-plane 
                 id="video-plane"
                 width="1.5" 
                 height="1" 
                 position="0 0.5 0" 
                 rotation="-90 0 0"
-                material="shader: flat; src: #video; transparent: false"
-                visible="true">
+                material="shader: flat; src: #video"
+                visible="false">
             </a-plane>
         </a-marker>
 
         <a-entity camera look-controls="enabled: false"></a-entity>
 
-        <!-- Video oculto (se reproduce sobre el marcador) -->
         <video 
             id="video" 
             src="assets/video1.mp4" 
-            preload="auto"
-            autoplay 
+            preload="metadata"
             loop 
             playsinline 
-            webkit-playsinline
             muted
-            crossorigin="anonymous"
             style="display:none">
         </video>
-
     </a-scene>
 
     <script>
         const scene = document.querySelector('a-scene');
         const loading = document.getElementById('loading');
-        const errorDiv = document.getElementById('error');
-        const debugDiv = document.getElementById('debug');
         const video = document.getElementById('video');
+        const marker = document.querySelector('a-marker');
+        const videoPlane = marker.querySelector('#video-plane');
         
-        function updateDebug(info) {
-            debugDiv.innerHTML = info;
-            debugDiv.style.display = 'block';
-        }
-        
-        let arSystem = null;
+        let cameraVideo = null;
+        let videoLoaded = false;
         let cameraReady = false;
-        let videoReady = false;
 
+        // Ocultar loading cuando todo esté listo
         function hideLoading() {
-            if (cameraReady && videoReady) {
+            if (cameraReady && videoLoaded) {
                 setTimeout(() => {
                     loading.style.display = 'none';
-                }, 1000);
+                }, 500);
             }
         }
 
-        // Esperar a que AR.js esté listo
-        scene.addEventListener('loaded', function() {
-            console.log('Escena cargada');
-        });
-
-        // Escuchar el evento de AR.js cuando el video de la cámara esté listo
-        scene.addEventListener('arjs-video-loaded', function() {
-            console.log('AR.js: Video de cámara cargado');
-            cameraReady = true;
-            hideLoading();
-        });
-
-        // También intentar detectar cuando AR.js está listo de otra manera
-        scene.addEventListener('renderstart', function() {
-            console.log('Render iniciado');
-            // Verificar AR.js después de que el render inicie
-            setTimeout(() => {
-                checkARJS();
-                // También verificar el canvas
-                const canvas = scene.canvas || document.querySelector('canvas');
-                if (canvas) {
-                    console.log('Canvas encontrado:', canvas.width, 'x', canvas.height);
-                    updateDebug(`Canvas: ${canvas.width}x${canvas.height}`);
-                    // Verificar si el canvas tiene contenido
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                        const imageData = ctx.getImageData(0, 0, Math.min(10, canvas.width), Math.min(10, canvas.height));
-                        const hasContent = imageData.data.some(pixel => pixel !== 0);
-                        console.log('Canvas tiene contenido:', hasContent);
-                    }
-                }
-            }, 1000);
-        });
-
         // Manejo del video
-        video.addEventListener('loadeddata', function() {
-            console.log('✓ Video cargado correctamente');
-            console.log('Video duración:', video.duration, 'segundos');
-            console.log('Video dimensiones:', video.videoWidth, 'x', video.videoHeight);
-            videoReady = true;
+        video.addEventListener('loadedmetadata', function() {
+            console.log('Video cargado');
+            videoLoaded = true;
             hideLoading();
-            
-            // Pre-cargar el video
-            video.load();
-            
-            // Hacer el video entity visible inmediatamente para testing
-            setTimeout(() => {
-                const testVideoEntity = marker.querySelector('#video-plane') || marker.querySelector('a-video') || marker.querySelector('a-plane');
-                console.log('Buscando video entity para testing:', testVideoEntity);
-                
-                if (testVideoEntity) {
-                    console.log('Haciendo video visible para testing');
-                    testVideoEntity.setAttribute('visible', 'true');
-                    testVideoEntity.setAttribute('material', 'shader: flat; src: #video; transparent: false');
-                    testVideoEntity.setAttribute('position', '0 0.5 0');
-                    
-                    // Reproducir el video para verificar que funciona
-                    video.play().then(() => {
-                        console.log('✓ Video de prueba reproduciendo');
-                        updateDebug('Video de prueba ON');
-                        
-                        // Verificar que el video esté vinculado
-                        const material = testVideoEntity.getAttribute('material');
-                        console.log('Material del video entity:', material);
-                    }).catch(err => {
-                        console.error('Error en video de prueba:', err);
-                    });
-                } else {
-                    console.error('No se encontró video entity para testing');
-                    // Intentar crear uno manualmente
-                    const plane = document.createElement('a-plane');
-                    plane.setAttribute('id', 'test-video-plane');
-                    plane.setAttribute('width', '1.5');
-                    plane.setAttribute('height', '1');
-                    plane.setAttribute('position', '0 1.5 -2');
-                    plane.setAttribute('material', 'shader: flat; src: #video');
-                    plane.setAttribute('visible', 'true');
-                    scene.appendChild(plane);
-                    console.log('Video plane de prueba creado manualmente');
-                    video.play().catch(err => console.error('Error:', err));
-                }
-            }, 2000);
-        });
-        
-        video.addEventListener('canplay', function() {
-            console.log('✓ Video listo para reproducir');
-        });
-        
-        video.addEventListener('playing', function() {
-            console.log('✓ Video está reproduciendo');
-            updateDebug('Video ON');
         });
 
         video.addEventListener('error', function(e) {
-            console.error('Error en el video:', e);
-            showError('Error al cargar el video. Verifica que el archivo video1.mp4 existe.');
+            console.error('Error en video:', e);
+            loading.textContent = 'Error al cargar el video';
         });
 
-        // Eventos del marcador
-        const marker = document.querySelector('a-marker');
-        let videoEntity = null;
-        
-        // Esperar a que el marcador esté cargado para obtener el video entity
-        marker.addEventListener('loaded', function() {
-            videoEntity = marker.querySelector('#video-plane') || marker.querySelector('a-video') || marker.querySelector('a-plane');
-            console.log('Video entity encontrado:', videoEntity);
-            if (videoEntity) {
-                // Asegurar que el video esté visible desde el inicio
-                videoEntity.setAttribute('visible', 'true');
-                videoEntity.setAttribute('material', 'shader: flat; src: #video; transparent: false');
-                console.log('Video entity configurado');
-            } else {
-                console.error('No se encontró ningún elemento de video en el marcador');
-            }
-        });
-        
+        // Eventos del marcador - solo cuando se detecta
         marker.addEventListener('markerFound', function() {
-            console.log('✓✓✓ MARCADOR DETECTADO ✓✓✓');
-            updateDebug('MARCADOR DETECTADO!');
+            console.log('Marcador detectado');
             
-            // Asegurar que el video esté visible
-            if (!videoEntity) {
-                videoEntity = marker.querySelector('#video-plane') || marker.querySelector('a-video') || marker.querySelector('a-plane');
+            if (videoPlane) {
+                videoPlane.setAttribute('visible', 'true');
             }
             
-            if (videoEntity) {
-                videoEntity.setAttribute('visible', 'true');
-                videoEntity.setAttribute('material', 'shader: flat; src: #video; transparent: false');
-                console.log('Video entity visible:', videoEntity.getAttribute('visible'));
-                console.log('Video entity position:', videoEntity.getAttribute('position'));
-                console.log('Video entity material:', videoEntity.getAttribute('material'));
-            } else {
-                console.error('Video entity no encontrado!');
-            }
-            
-            // Reproducir el video
-            video.currentTime = 0;
-            const playPromise = video.play();
-            if (playPromise !== undefined) {
-                playPromise
-                    .then(() => {
-                        console.log('✓ Video reproduciendo');
-                        updateDebug('Video ON');
-                    })
-                    .catch(err => {
-                        console.error('Error al reproducir video:', err);
-                        updateDebug('Error: ' + err.message);
-                    });
+            // Solo reproducir cuando se detecta el marcador
+            if (video.paused) {
+                video.play().catch(err => console.error('Error:', err));
             }
         });
 
         marker.addEventListener('markerLost', function() {
             console.log('Marcador perdido');
-            updateDebug('Marcador perdido');
-        });
-        
-        // Verificar periódicamente si el marcador está siendo detectado
-        let lastMarkerState = false;
-        setInterval(() => {
-            if (marker && marker.object3D) {
-                const isVisible = marker.object3D.visible;
-                if (isVisible !== lastMarkerState) {
-                    console.log('Estado del marcador cambió:', isVisible ? 'VISIBLE' : 'OCULTO');
-                    lastMarkerState = isVisible;
-                    
-                    if (isVisible && videoEntity) {
-                        console.log('Marcador visible - forzando video visible');
-                        videoEntity.setAttribute('visible', 'true');
-                        video.play().catch(err => console.error('Error:', err));
-                    }
-                }
+            if (videoPlane) {
+                videoPlane.setAttribute('visible', 'false');
             }
-        }, 500);
-
-        // Verificar si el marcador se carga correctamente
-        marker.addEventListener('loaded', function() {
-            console.log('✓ Marcador cargado correctamente');
-            updateDebug('Marcador listo');
-        });
-        
-        // Verificar el estado del marcador periódicamente y forzar visibilidad del video
-        setInterval(() => {
-            if (marker && marker.object3D) {
-                const isVisible = marker.object3D.visible;
-                const position = marker.object3D.position;
-                
-                // Si el marcador tiene posición diferente a (0,0,0), está siendo detectado
-                if (position.x !== 0 || position.y !== 0 || position.z !== 0) {
-                    console.log('Marcador detectado (por posición):', position);
-                    updateDebug('Marcador detectado!');
-                    
-                    if (!videoEntity) {
-                        videoEntity = marker.querySelector('#video-plane') || marker.querySelector('a-video') || marker.querySelector('a-plane');
-                    }
-                    
-                    if (videoEntity) {
-                        videoEntity.setAttribute('visible', 'true');
-                        videoEntity.setAttribute('material', 'shader: flat; src: #video; transparent: false');
-                        video.play().catch(err => console.error('Error:', err));
-                    }
-                }
-                
-                if (isVisible) {
-                    console.log('Marcador visible en 3D, posición:', position);
-                }
-            }
-        }, 1000);
-
-        marker.addEventListener('error', function(e) {
-            console.error('Error al cargar marcador:', e);
-            showError('Error al cargar el marcador. Verifica que marker1.patt existe en la carpeta assets.');
+            // Pausar para ahorrar recursos
+            video.pause();
         });
 
-        function showError(message) {
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            loading.style.display = 'none';
-        }
-
-        // Verificar HTTPS
-        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-            showError('Esta aplicación requiere HTTPS para acceder a la cámara.');
-        }
-
-
-        // NO pedir acceso a la cámara manualmente - AR.js lo hace automáticamente
-        // Solo verificamos que el navegador soporte la API
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            showError('Tu navegador no soporta acceso a la cámara.');
-        }
-
-        // Intentar acceder al sistema AR.js después de que la escena esté completamente cargada
-        function checkARJS() {
-            // Método 1: Buscar el sistema AR.js en scene.systems
-            let arSystem = null;
-            if (scene.systems) {
-                arSystem = scene.systems.arjs || scene.systems['arjs'];
-                // También buscar en todas las propiedades
-                if (!arSystem) {
-                    for (let key in scene.systems) {
-                        if (key.toLowerCase().includes('ar') || (scene.systems[key] && scene.systems[key].arToolkitSource)) {
-                            arSystem = scene.systems[key];
-                            console.log('AR.js encontrado en:', key);
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            // Método 2: Buscar el video de AR.js directamente en el DOM
-            const allVideos = document.querySelectorAll('video');
-            let arVideo = null;
-            for (let v of allVideos) {
-                // AR.js crea un video que no es nuestro video de contenido
-                if (v.id !== 'video' && v.srcObject) {
-                    arVideo = v;
-                    console.log('Video de AR.js encontrado en DOM', arVideo);
-                    break;
-                }
-            }
-            
-            // Método 3: Buscar en el canvas o en elementos de la escena
-            const canvas = scene.canvas || scene.renderer?.domElement;
-            if (canvas) {
-                console.log('Canvas encontrado', canvas);
-            }
-            
-            if (arSystem) {
-                console.log('Sistema AR.js encontrado', arSystem);
-                updateDebug('AR.js sistema encontrado');
-                
-                // Intentar acceder al video de AR.js desde el sistema
-                const arToolkitSource = arSystem.arToolkitSource;
-                if (arToolkitSource && arToolkitSource.domElement) {
-                    arVideo = arToolkitSource.domElement;
-                }
-            }
-            
-            if (arVideo) {
-                console.log('Video de AR.js encontrado', arVideo);
-                console.log('Video readyState:', arVideo.readyState);
-                console.log('Video videoWidth:', arVideo.videoWidth);
-                console.log('Video videoHeight:', arVideo.videoHeight);
-                console.log('Video srcObject:', arVideo.srcObject);
-                
-                updateDebug(`AR Video: ${arVideo.videoWidth}x${arVideo.videoHeight}, ready: ${arVideo.readyState}`);
-                
-                // Verificar si el video tiene dimensiones (está funcionando)
-                if (arVideo.videoWidth > 0 && arVideo.videoHeight > 0) {
-                    console.log('Video de AR.js tiene dimensiones, está funcionando');
-                    updateDebug(`AR Video OK: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
+        // Configurar cámara de fondo (solo una vez)
+        scene.addEventListener('renderstart', function() {
+            if (!cameraVideo && !document.getElementById('camera-video')) {
+                // Verificar si AR.js tiene el video
+                const arSystem = scene.systems.arjs;
+                if (arSystem && arSystem.arToolkitSource && arSystem.arToolkitSource.domElement) {
+                    const arVideo = arSystem.arToolkitSource.domElement;
+                    arVideo.style.position = 'fixed';
+                    arVideo.style.top = '0';
+                    arVideo.style.left = '0';
+                    arVideo.style.width = '100vw';
+                    arVideo.style.height = '100vh';
+                    arVideo.style.objectFit = 'cover';
+                    arVideo.style.zIndex = '1';
+                    cameraVideo = arVideo;
                     cameraReady = true;
                     hideLoading();
-                    return true;
-                }
-                
-                // Escuchar eventos del video
-                arVideo.addEventListener('loadedmetadata', function() {
-                    console.log('Metadata del video de AR.js cargado', arVideo.videoWidth, arVideo.videoHeight);
-                    updateDebug(`AR Video metadata: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
-                    if (arVideo.videoWidth > 0 && arVideo.videoHeight > 0) {
+                } else {
+                    // Crear video de cámara manualmente
+                    navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: 'environment' } 
+                    })
+                    .then(function(stream) {
+                        const camVideo = document.createElement('video');
+                        camVideo.id = 'camera-video';
+                        camVideo.srcObject = stream;
+                        camVideo.autoplay = true;
+                        camVideo.playsinline = true;
+                        camVideo.muted = true;
+                        camVideo.style.position = 'fixed';
+                        camVideo.style.top = '0';
+                        camVideo.style.left = '0';
+                        camVideo.style.width = '100vw';
+                        camVideo.style.height = '100vh';
+                        camVideo.style.objectFit = 'cover';
+                        camVideo.style.zIndex = '1';
+                        document.body.insertBefore(camVideo, document.body.firstChild);
+                        cameraVideo = camVideo;
                         cameraReady = true;
                         hideLoading();
-                    }
-                });
-                
-                arVideo.addEventListener('playing', function() {
-                    console.log('Video de AR.js está reproduciendo');
-                    updateDebug(`AR Video playing: ${arVideo.videoWidth}x${arVideo.videoHeight}`);
-                    cameraReady = true;
-                    hideLoading();
-                });
-                
-                return false; // Encontrado pero aún no tiene dimensiones
-            } else {
-                console.log('Video de AR.js no encontrado');
-                updateDebug('AR Video no encontrado');
-            }
-            
-            return false;
-        }
-
-        scene.addEventListener('loaded', function() {
-            console.log('Escena cargada');
-            
-            // Verificar si AR.js está disponible globalmente
-            console.log('ARjs global:', typeof ARjs !== 'undefined' ? ARjs : 'no disponible');
-            console.log('AFRAME.systems:', AFRAME && AFRAME.systems ? Object.keys(AFRAME.systems) : 'no disponible');
-            
-            // Verificar el componente arjs de la escena
-            const arjsComponent = scene.getAttribute('arjs');
-            console.log('Atributo arjs de la escena:', arjsComponent);
-            
-            // Verificar si el sistema AR.js se ha registrado
-            if (scene.systems) {
-                console.log('Sistemas disponibles:', Object.keys(scene.systems));
-                // Buscar si hay algún sistema relacionado con AR
-                for (let key of Object.keys(scene.systems)) {
-                    if (key.toLowerCase().includes('ar')) {
-                        console.log('Sistema AR encontrado:', key, scene.systems[key]);
-                    }
+                    })
+                    .catch(function(err) {
+                        console.error('Error cámara:', err);
+                        loading.textContent = 'Error al acceder a la cámara';
+                    });
                 }
             }
-            
-            // Verificar inmediatamente si AR.js está disponible
-            const hasARjs = typeof ARjs !== 'undefined' || 
-                           (scene.systems && (scene.systems.arjs || scene.systems['arjs']));
-            
-            if (!hasARjs) {
-                console.log('AR.js NO está disponible, usando solución alternativa INMEDIATAMENTE');
-                updateDebug('AR.js no disponible - usando cámara directa');
-                // Ejecutar inmediatamente
-                setTimeout(() => {
-                    tryCreateCameraVideo();
-                }, 500);
-                return;
-            }
-            
-            // Si AR.js está disponible, intentar encontrarlo
-            let attempts = 0;
-            const maxAttempts = 5;
-            const checkInterval = setInterval(() => {
-                attempts++;
-                console.log(`Intento ${attempts} de encontrar AR.js`);
-                
-                if (checkARJS() || attempts >= maxAttempts) {
-                    clearInterval(checkInterval);
-                    if (attempts >= maxAttempts && !cameraReady) {
-                        console.log('No se pudo encontrar AR.js después de múltiples intentos');
-                        console.log('Intentando solución alternativa...');
-                        tryCreateCameraVideo();
-                    }
-                }
-            }, 500);
         });
-        
-        // Función para intentar crear el video de la cámara manualmente
-        function tryCreateCameraVideo() {
-            console.log('=== Intentando crear video de cámara manualmente ===');
-            
-            // Verificar si ya existe
-            if (document.getElementById('camera-video')) {
-                console.log('Video de cámara ya existe');
-                return;
-            }
-            
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                console.error('getUserMedia no disponible');
-                showError('Tu navegador no soporta acceso a la cámara.');
-                return;
-            }
-            
-            console.log('Solicitando acceso a la cámara...');
-            updateDebug('Solicitando cámara...');
-            
-            navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: 'environment',
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                } 
-            })
-            .then(function(stream) {
-                console.log('✓ Stream de cámara obtenido manualmente');
-                updateDebug('Cámara obtenida!');
-                
-                // Crear un video element como fondo
-                const cameraVideo = document.createElement('video');
-                cameraVideo.id = 'camera-video';
-                cameraVideo.srcObject = stream;
-                cameraVideo.autoplay = true;
-                cameraVideo.playsinline = true;
-                cameraVideo.muted = true;
-                cameraVideo.setAttribute('playsinline', '');
-                cameraVideo.setAttribute('webkit-playsinline', '');
-                cameraVideo.style.position = 'fixed';
-                cameraVideo.style.top = '0';
-                cameraVideo.style.left = '0';
-                cameraVideo.style.width = '100vw';
-                cameraVideo.style.height = '100vh';
-                cameraVideo.style.zIndex = '0';
-                cameraVideo.style.objectFit = 'cover';
-                cameraVideo.style.backgroundColor = '#000';
-                document.body.insertBefore(cameraVideo, document.body.firstChild);
-                
-                // Forzar que el canvas sea transparente
-                setTimeout(() => {
-                    const canvas = document.querySelector('canvas.a-canvas');
-                    if (canvas) {
-                        canvas.style.background = 'transparent';
-                        canvas.style.backgroundColor = 'transparent';
-                        console.log('Canvas configurado como transparente');
-                    }
-                    
-                    // También configurar la escena
-                    scene.setAttribute('background', 'transparent: true; color: transparent;');
-                    console.log('Escena configurada como transparente');
-                }, 100);
-                
-                console.log('Video element creado y agregado al DOM');
-                
-                cameraVideo.addEventListener('loadedmetadata', function() {
-                    console.log('✓ Video de cámara tiene dimensiones:', cameraVideo.videoWidth, 'x', cameraVideo.videoHeight);
-                    updateDebug(`Cámara: ${cameraVideo.videoWidth}x${cameraVideo.videoHeight}`);
-                    cameraReady = true;
-                    hideLoading();
-                });
-                
-                cameraVideo.addEventListener('playing', function() {
-                    console.log('✓ Video de cámara está reproduciendo');
-                    updateDebug('Cámara reproduciendo');
-                    cameraReady = true;
-                    hideLoading();
-                });
-                
-                cameraVideo.addEventListener('error', function(e) {
-                    console.error('Error en video de cámara:', e);
-                    updateDebug('Error en video');
-                });
-                
-                // Forzar play
-                const playPromise = cameraVideo.play();
-                if (playPromise !== undefined) {
-                    playPromise
-                        .then(() => {
-                            console.log('✓ Video de cámara iniciado');
-                        })
-                        .catch(err => {
-                            console.error('Error al reproducir video de cámara:', err);
-                            updateDebug('Error al reproducir');
-                        });
-                }
-            })
-            .catch(function(err) {
-                console.error('✗ Error al obtener cámara manualmente:', err);
-                updateDebug('Error: ' + err.name);
-                showError('No se pudo acceder a la cámara. Error: ' + err.name + ' - ' + err.message);
-            });
-        }
 
-        // Fallback final: después de que se concedan permisos y pase tiempo, marcar como listo
-        setTimeout(() => {
-            if (videoReady) {
-                console.log('Fallback final: marcando cámara como lista');
-                // Verificar una última vez
-                if (!checkARJS()) {
-                    cameraReady = true;
-                    hideLoading();
-                }
+        // Limpiar cuando se cierra
+        window.addEventListener('beforeunload', function() {
+            if (cameraVideo && cameraVideo.srcObject) {
+                cameraVideo.srcObject.getTracks().forEach(track => track.stop());
             }
-        }, 4000);
+            video.pause();
+        });
     </script>
 </body>
-
 </html>
