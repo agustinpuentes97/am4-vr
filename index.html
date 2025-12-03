@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AR Video Marker</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar-threex.js"></script>
     <style>
         body {
@@ -107,8 +108,25 @@
                     
                     // Inicializar AR después de que la cámara esté lista
                     setTimeout(() => {
-                        initAR();
-                    }, 500);
+                        // Esperar un poco más para que los scripts se carguen
+                        if (typeof THREEx !== 'undefined') {
+                            initAR();
+                        } else {
+                            console.log('Esperando a que THREEx se cargue...');
+                            let waitCount = 0;
+                            const waitInterval = setInterval(() => {
+                                waitCount++;
+                                if (typeof THREEx !== 'undefined') {
+                                    clearInterval(waitInterval);
+                                    initAR();
+                                } else if (waitCount > 20) {
+                                    clearInterval(waitInterval);
+                                    console.error('THREEx no se cargó, intentando cargar manualmente');
+                                    loadARJSManually();
+                                }
+                            }, 500);
+                        }
+                    }, 1000);
                 });
             })
             .catch(function(err) {
@@ -120,11 +138,47 @@
         function initAR() {
             console.log('Inicializando AR...');
             
+            // Esperar a que THREEx esté disponible
+            let attempts = 0;
+            const maxAttempts = 10;
+            const checkTHREEx = setInterval(() => {
+                attempts++;
+                if (typeof THREEx !== 'undefined') {
+                    clearInterval(checkTHREEx);
+                    initARCore();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkTHREEx);
+                    console.error('THREEx no se cargó después de múltiples intentos');
+                    // Intentar cargar manualmente
+                    loadARJSManually();
+                }
+            }, 500);
+        }
+        
+        function loadARJSManually() {
+            console.log('Intentando cargar AR.js manualmente...');
+            const script1 = document.createElement('script');
+            script1.src = 'https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar.js';
+            script1.onload = function() {
+                const script2 = document.createElement('script');
+                script2.src = 'https://cdn.jsdelivr.net/npm/ar.js@3.3.2/three.js/build/ar-threex.js';
+                script2.onload = function() {
+                    console.log('AR.js cargado manualmente');
+                    initARCore();
+                };
+                document.head.appendChild(script2);
+            };
+            document.head.appendChild(script1);
+        }
+        
+        function initARCore() {
             // Verificar que THREEx esté disponible
             if (typeof THREEx === 'undefined') {
-                console.error('THREEx no está disponible');
+                console.error('THREEx aún no está disponible');
                 return;
             }
+            
+            console.log('THREEx disponible, inicializando...');
             
             // Configurar canvas
             canvas.width = window.innerWidth;
